@@ -6,6 +6,9 @@ authors = [
     {name = "Stéphane Pinchaux", email = "stephane@ggwp.me"},
 ]
 dependencies = [
+    "websockets==12.0",
+    "urllib3==2.2.1",
+    "httpx==0.27.0",
 ]
 requires-python = ">=3.12"
 readme = "README.md"
@@ -15,14 +18,17 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 
-[tool.setuptools.packages.find]
-include = ["tydomio.*"]
-
 [project.optional-dependencies]
 dev = [
   "coverage",
   "pre-commit",
+  "pylint",
+  "ruff",
+  "mypy",
 ]
+
+[project.scripts]
+tydomio = "tydomio.cli:_main"
 
 [tool.ruff]
 line-length = 88
@@ -48,10 +54,21 @@ select = [
 ignore = [
     "D203", # `one-blank-line-before-class` (D203) and `no-blank-line-before-class` (D211) are incompatible
     "D213", # `multi-line-summary-first-line` (D212) and `multi-line-summary-second-line` (D213) are incompatible
+    "PLR0913", # nope, I don't realy have too many arguments in my constructor
 ]
 
 [tool.pylint]
 py-version=3.12
 disable=[
     "too-few-public-methods",
+    "too-many-instance-attributes",
+    "too-many-arguments",
 ]
+
+[[tool.mypy.overrides]]
+module = [
+    "httpx",
+    "websockets",
+    "websockets.auth",
+]
+ignore_missing_imports = true
