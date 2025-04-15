@@ -1,18 +1,27 @@
 """Client implementation."""
 
 import asyncio.exceptions
+import itertools
 import json
 import logging
+import random
+import re
 import ssl
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 import websockets.auth
+from websockets import WebSocketClientProtocol
 
 CLIENT_LOGGER = logging.getLogger("tydomio.client")
 REQUEST_LOGGER = CLIENT_LOGGER.getChild("request")
 RESPONSE_LOGGER = CLIENT_LOGGER.getChild("response")
+
+
+OnConnectionRoutine = Callable[["AsyncTydomClient"], Coroutine[Any, Any, None]]
+OnDisconnectionRoutine = Callable[[], Coroutine[Any, Any, None]]
 
 
 class AsyncTydomClient:
@@ -30,6 +39,8 @@ class AsyncTydomClient:
         tydom_ip: str | None,
         tydom_mac: str,
         deltadore_remote: str = "mediation.tydom.com",
+        on_connection_routines: tuple[OnConnectionRoutine, ...] = (),
+        on_disconnection_routines: tuple[OnDisconnectionRoutine, ...] = (),
     ):
         """AsyncTydomClient constructor.
 
@@ -49,6 +60,13 @@ class AsyncTydomClient:
         self._ssl_context = ssl._create_unverified_context()
         if self._local_access:
             self._ssl_context.options |= 0x4
+
+        self._websocket: WebSocketClientProtocol | None = None
+        self._requests_in_progress: dict[int, asyncio.Future[Response]] = {}
+        self._connexion_st_cond = asyncio.Condition()
+
+        self._on_connection_routines = on_connection_routines
+        self._on_disconnection_routines = on_disconnection_routines
 
     async def _get_authorization(self) -> str:
         CLIENT_LOGGER.info(
@@ -83,62 +101,13 @@ class AsyncTydomClient:
     async def run_websocket(self) -> None:
         """Authenticate initiate the connection on the Tydom websocket."""
         wait_between_retry = 5
+        exiting = False
 
         while True:
             # try to get authorization, retry every 5 seconds on failure
             try:
+                self._websocket = None
                 authorization = await self._get_authorization()
-
-                # open websocket
-                async with websockets.connect(
-                    uri=f"wss://{self._tydom_target}:443"
-                    f"/mediation/client?mac={self._tydom_mac}&appli=1",
-                    extra_headers={"Authorization": authorization},
-                    ssl=self._ssl_context,
-                    ping_timeout=None,
-                ) as websocket:
-                    CLIENT_LOGGER.info("Connected to tydom")
-
-                    await websocket.send(
-                        Request(
-                            cmd_prefix=self._cmd_prefix,
-                            method="GET",
-                            url="/configs/file",
-                            headers={
-                                "Content-Type": "application/json; charset=UTF-8",
-                                "Transac-Id": "0",
-                            },
-                        ).to_bytes()
-                    )
-
-                    try:
-                        async for message in websocket:
-                            CLIENT_LOGGER.debug("raw content: %s", message)
-                            parsed_msg = parse_message(message, self._cmd_prefix)
-
-                            if isinstance(parsed_msg, Request):
-                                CLIENT_LOGGER.info(
-                                    "Got a request %s %s",
-                                    parsed_msg.method,
-                                    parsed_msg.url,
-                                )
-                                CLIENT_LOGGER.info("Headers %s", parsed_msg.headers)
-                                CLIENT_LOGGER.info("Content %s", parsed_msg.json)
-
-                            if isinstance(parsed_msg, Response):
-                                CLIENT_LOGGER.info(
-                                    "Got a response %s", parsed_msg.status
-                                )
-                                CLIENT_LOGGER.info("Headers %s", parsed_msg.headers)
-                                CLIENT_LOGGER.info("Content %s", parsed_msg.content)
-                                CLIENT_LOGGER.info("Content %s", parsed_msg.json)
-
-                    except websockets.ConnectionClosed:
-                        CLIENT_LOGGER.exception("Connection lost")
-
-                    except asyncio.exceptions.CancelledError:
-                        CLIENT_LOGGER.info("Exiting...")
-                        return
 
             except httpx.ConnectError:
                 # wait and retry
@@ -146,10 +115,123 @@ class AsyncTydomClient:
                 await asyncio.sleep(wait_between_retry)
                 continue
 
-            except websockets.exceptions.InvalidStatusCode:
+            try:
+                # open websocket
+                async with websockets.connect(
+                    uri=f"wss://{self._tydom_target}:443"
+                    f"/mediation/client?mac={self._tydom_mac}&appli=1",
+                    extra_headers={"Authorization": authorization},
+                    ssl=self._ssl_context,
+                    ping_timeout=None,
+                ) as self._websocket:
+                    CLIENT_LOGGER.info("Connected to tydom")
+
+                    async with asyncio.TaskGroup() as task_group:
+                        task_group.create_task(self._read_messages())
+                        for connection_routine in self._on_connection_routines:
+                            task_group.create_task(connection_routine(self))
+
+            except* (asyncio.exceptions.CancelledError, websockets.ConnectionClosedOK):
+                CLIENT_LOGGER.info("Exiting...")
+                exiting = True
+
+            except* (websockets.ConnectionClosed, websockets.ConnectionClosedError):
+                CLIENT_LOGGER.exception("Connection lost")
+
+            except* websockets.exceptions.InvalidStatusCode:
                 # this is probably due to a 401, break
                 CLIENT_LOGGER.error("Invalid authentication")
-                break
+                self._websocket = None
+
+            async with asyncio.TaskGroup() as task_group:
+                task_group.create_task(self._read_messages())
+                for disconnection_routine in self._on_disconnection_routines:
+                    task_group.create_task(disconnection_routine())
+
+            if exiting:
+                return
+
+    async def _read_messages(self) -> None:
+        assert self._websocket is not None
+
+        async for message in self._websocket:
+            CLIENT_LOGGER.debug("raw content: %s", message)
+            parsed_msg = parse_message(message, self._cmd_prefix)
+
+            if isinstance(parsed_msg, Request):
+                CLIENT_LOGGER.info(
+                    "Got a request %s %s",
+                    parsed_msg.method,
+                    parsed_msg.url,
+                )
+                CLIENT_LOGGER.info("Headers %s", parsed_msg.headers)
+                CLIENT_LOGGER.info("Content %s", parsed_msg.json)
+
+            if isinstance(parsed_msg, Response):
+                response_transac_id = parsed_msg.transac_id
+                if response_transac_id not in self._requests_in_progress:
+                    CLIENT_LOGGER.warning(
+                        "Got an unexpected response %s", parsed_msg.status
+                    )
+                    CLIENT_LOGGER.warning("Headers %s", parsed_msg.headers)
+                    CLIENT_LOGGER.warning("Content %s", parsed_msg.content)
+                else:
+                    self._requests_in_progress[response_transac_id].set_result(
+                        parsed_msg
+                    )
+
+    async def wait_unit_connected(self) -> None:
+        """Wait asynchronously until the unit is connected.
+
+        This method uses a condition variable to pause execution until the
+        `_websocket` attribute is no longer `None`, indicating that the connection
+        has been established.
+
+        Raises:
+            asyncio.CancelledError: If the task is cancelled while waiting.
+
+        """
+        async with self._connexion_st_cond:
+            await self._connexion_st_cond.wait_for(lambda: self._websocket is not None)
+
+    async def send(self, request: "Request") -> "Response":
+        """Send a request over the websocket connection and waits for the response.
+
+        Args:
+            request (Request): The request object to be sent. It must have a unique
+                transaction_id.
+
+        Returns:
+            Response: The response object received for the given request.
+
+        Raises:
+            RuntimeError: If the websocket connection is not established.
+            AssertionError: If a request with the same transaction_id already exists.
+
+        Notes:
+            - The method ensures that the transaction_id of the request is unique
+              among the requests currently in progress.
+            - The response is awaited asynchronously, and the request is removed
+              from the in-progress list once completed or in case of an exception.
+
+        """
+        assert request.transaction_id not in self._requests_in_progress
+
+        if self._websocket is None:
+            raise RuntimeError("Not connected")
+
+        future_response: asyncio.Future[Response] = asyncio.Future()
+        self._requests_in_progress[request.transaction_id] = future_response
+
+        try:
+            await self._websocket.send(request.to_bytes(cmd_prefix=self._cmd_prefix))
+            response = await future_response
+            return response
+        finally:
+            del self._requests_in_progress[request.transaction_id]
+
+
+TRANSACTION_COUNTER = itertools.count(random.randint(1, 100000000))
 
 
 @dataclass
@@ -160,11 +242,11 @@ class Request:
     - but also from the Tydom to the client 🤷
     """
 
-    cmd_prefix: str
     method: str
     url: str
     headers: dict[str, str] = field(default_factory=dict)
     content: bytes | None = None
+    transaction_id: int = field(default_factory=lambda: next(TRANSACTION_COUNTER))
 
     def _make_headers(self) -> dict[str, str]:
         auto_headers: dict[str, str] = {}
@@ -173,15 +255,20 @@ class Request:
             "Content-Length" in self.headers or "Transfer-Encoding" in self.headers
         )
 
+        has_transac_id = "Transac-Id" in self.headers
+
         if not has_content_length and self.method in ("POST", "PUT", "PATCH"):
             auto_headers["Content-Length"] = "0"
 
+        if not has_transac_id:
+            auto_headers["Transac-Id"] = str(self.transaction_id)
+
         return {**self.headers, **auto_headers}
 
-    def to_bytes(self) -> bytes:
+    def to_bytes(self, cmd_prefix: str) -> bytes:
         """Format this request to an array of bytes to send on the websocket."""
         return (
-            f"{self.cmd_prefix}{self.method} {self.url} HTTP/1.1\r\n"
+            f"{cmd_prefix}{self.method} {self.url} HTTP/1.1\r\n"
             + "\r\n".join(
                 (f"{key}: {value}" for key, value in self._make_headers().items())
             )
@@ -189,7 +276,7 @@ class Request:
         ).encode("ascii")
 
     @property
-    def parsed_content(self) -> tuple[str, Any, str]:
+    def parsed_content(self) -> str:
         """Parse the request content."""
         if self.content is None:
             raise RuntimeError("No content to parse")
@@ -197,30 +284,9 @@ class Request:
         REQUEST_LOGGER.debug("Parse json from %s", self.content)
 
         str_content = self.content.decode("utf-8")
-        number_of_seperator_in_weird_content = 2
+        str_content_clean = re.sub(r"[0-9A-F]+\r\n", "\r\n", str_content).rstrip()
 
-        if str_content.count("\r\n") == number_of_seperator_in_weird_content:
-            # parse this weird content format from Tydom
-            json_start = str_content.find("\r\n") + 2
-            json_end = str_content.find("\r\n", json_start)
-            stuff_before = str_content[:json_start].replace("\r\n", "")
-            stuff_after = str_content[json_end:].replace("\r\n", "")
-
-            REQUEST_LOGGER.debug(
-                "Parsing request from Tydom, "
-                "weird stuffs are %s (before) and %s (after)",
-                stuff_before,
-                stuff_after,
-            )
-
-            return (
-                stuff_before,
-                json.loads(str_content[json_start:json_end]),
-                stuff_after,
-            )
-
-        # Parse a normal content build from our code
-        return "", json.loads(str_content), ""
+        return str_content_clean
 
     @property
     def json(self) -> Any:
@@ -248,6 +314,13 @@ class Response:
 
         RESPONSE_LOGGER.debug("Parse json from %s", self.content)
         return json.loads(self.content.decode("utf-8"))
+
+    @property
+    def transac_id(self) -> int | None:
+        """Get the transaction id."""
+        if "Transac-Id" not in self.headers:
+            return None
+        return int(self.headers["Transac-Id"])
 
 
 def parse_message(message: bytes, cmd_prefix: str) -> Response | Request:
@@ -280,7 +353,6 @@ def parse_message(message: bytes, cmd_prefix: str) -> Response | Request:
         headers[key.strip()] = val.strip()
 
     return Request(
-        cmd_prefix=cmd_prefix,
         method=method,
         url=url,
         headers=headers,
