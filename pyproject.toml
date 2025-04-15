@@ -9,6 +9,7 @@ dependencies = [
     "websockets==12.0",
     "urllib3==2.2.1",
     "httpx==0.27.0",
+    "pydantic==2.11.3",
 ]
 requires-python = ">=3.12"
 readme = "README.md"
@@ -18,14 +19,14 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 
-[project.optional-dependencies]
-dev = [
-  "coverage",
-  "pre-commit",
-  "pylint",
-  "ruff",
-  "mypy",
+[tool.uv]
+dev-dependencies = [
+  "coverage==7.8.0",
+  "pre-commit==4.1.0",
+  "pylint==3.3.5",
 ]
+
+package = true
 
 [project.scripts]
 tydomio = "tydomio.cli:_main"
@@ -57,13 +58,20 @@ ignore = [
     "PLR0913", # nope, I don't realy have too many arguments in my constructor
 ]
 
-[tool.pylint]
+[tool.pylint.main]
 py-version=3.12
+
+[tool.pylint."messages control"]
 disable=[
     "too-few-public-methods",
     "too-many-instance-attributes",
     "too-many-arguments",
+    "missing-class-docstring",
+    "too-many-positional-arguments",
 ]
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = [

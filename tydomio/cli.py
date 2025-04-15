@@ -4,11 +4,36 @@ import argparse
 import asyncio
 import logging
 import os
+import sys
 
-from tydomio.client import AsyncTydomClient
+from tydomio.client import AsyncTydomClient, Request
+from tydomio.model import parse_config
 
 
-def _main() -> int:
+def main() -> int:
+    """Entry point for the CLI application.
+
+    This function parses command-line arguments, configures logging, and
+    executes the specified action.
+
+    Returns:
+        int: Exit code of the application. Returns 0 on successful execution.
+
+    Command-line Arguments:
+        action (str): The action to perform. Choices are:
+            - "run": Executes the main application logic.
+            - "get-tydom-password": Retrieves the Tydom password.
+        -v, --verbose (bool): Enables verbose logging if specified.
+        --tydom-ip (str): The IP address for direct access. If not provided,
+            remote access will be used, and the Tydom MAC address will be required.
+            Defaults to the value of the environment variable `TYDOM_IP`.
+        --tydom-password (str): The Tydom password. This is not the account
+            password. Use the "get-tydom-password" action to retrieve it.
+            Defaults to the value of the environment variable `TYDOM_PASSWORD`.
+        --tydom-mac (str): The Tydom MAC address, required only for remote access.
+            Defaults to the value of the environment variable `TYDOM_MAC_ADDRESS`.
+
+    """
     parser = argparse.ArgumentParser()
 
     parser.add_argument("action", choices=["run", "get-tydom-password"])
@@ -49,11 +74,30 @@ def _main() -> int:
     return 0
 
 
+async def _poll_config(client: AsyncTydomClient) -> None:
+    while True:
+        response = await client.send(
+            Request(
+                method="GET",
+                url="/configs/file",
+                headers={
+                    "Content-Type": "application/json; charset=UTF-8",
+                },
+            )
+        )
+        #     CLIENT_LOGGER.info("JSON\n\n%s\n\n", response.content.decode("utf-8"))
+        if response.content is not None:
+            config = parse_config(response.content.decode("utf-8"))
+            logging.info(config)
+        await asyncio.sleep(10)
+
+
 def _do_run(args: argparse.Namespace) -> int:
     client = AsyncTydomClient(
         tydom_password=args.tydom_password,
         tydom_ip=args.tydom_ip,
         tydom_mac=args.tydom_mac,
+        on_connection_routines=(_poll_config,),
     )
 
     try:
@@ -62,3 +106,7 @@ def _do_run(args: argparse.Namespace) -> int:
         pass
 
     return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
