@@ -7,9 +7,10 @@ import logging
 import random
 import re
 import ssl
+from abc import ABC
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Generic, TypeVar, cast
 
 import httpx
 import websockets.auth
@@ -19,9 +20,9 @@ CLIENT_LOGGER = logging.getLogger("tydomio.client")
 REQUEST_LOGGER = CLIENT_LOGGER.getChild("request")
 RESPONSE_LOGGER = CLIENT_LOGGER.getChild("response")
 
-
 OnConnectionRoutine = Callable[["AsyncTydomClient"], Coroutine[Any, Any, None]]
 OnDisconnectionRoutine = Callable[[], Coroutine[Any, Any, None]]
+ResponseT = TypeVar("ResponseT", bound="Response")
 
 
 class AsyncTydomClient:
@@ -194,7 +195,7 @@ class AsyncTydomClient:
         async with self._connexion_st_cond:
             await self._connexion_st_cond.wait_for(lambda: self._websocket is not None)
 
-    async def send(self, request: "Request") -> "Response":
+    async def send(self, request: "Request[ResponseT]") -> ResponseT:
         """Send a request over the websocket connection and waits for the response.
 
         Args:
@@ -226,7 +227,7 @@ class AsyncTydomClient:
         try:
             await self._websocket.send(request.to_bytes(cmd_prefix=self._cmd_prefix))
             response = await future_response
-            return response
+            return request.parse_response(response)
         finally:
             del self._requests_in_progress[request.transaction_id]
 
@@ -235,7 +236,7 @@ TRANSACTION_COUNTER = itertools.count(random.randint(1, 100000000))
 
 
 @dataclass
-class Request:
+class RawRequest:
     """The Request.
 
     - sent by the client to the Tydom
@@ -294,6 +295,32 @@ class Request:
         return self.parsed_content[1]
 
 
+class Request(RawRequest, Generic[ResponseT], ABC):
+    """The Request.
+
+    - sent by the client to the Tydom
+    - but also from the Tydom to the client 🤷
+    """
+
+    response_type: type[ResponseT]
+
+    @classmethod
+    def parse_response(
+        cls: type["Request[ResponseT]"],
+        response: "Response",
+    ) -> ResponseT:
+        """Parse the given response and convert it to the expected response type.
+
+        Args:
+            response (Response): The response object to be parsed.
+
+        Returns:
+            ResponseT: The parsed response, cast to the expected response type.
+
+        """
+        return cast(ResponseT, cls.response_type(response))
+
+
 @dataclass
 class Response:
     """The Response.
@@ -304,7 +331,6 @@ class Response:
     status: int
     headers: dict[str, str]
     content: bytes | None
-    logger = logging.getLogger("tydomio.client.request")
 
     @property
     def json(self) -> Any:
@@ -323,7 +349,7 @@ class Response:
         return int(self.headers["Transac-Id"])
 
 
-def parse_message(message: bytes, cmd_prefix: str) -> Response | Request:
+def parse_message(message: bytes, cmd_prefix: str) -> Response | RawRequest:
     """Parse messages received from the websocket into Request or Response."""
     is_response = message.startswith(f"{cmd_prefix}HTTP/1.1 ".encode("ascii"))
 
@@ -352,7 +378,7 @@ def parse_message(message: bytes, cmd_prefix: str) -> Response | Request:
         key, val = keyval.decode("ascii").split(":")
         headers[key.strip()] = val.strip()
 
-    return Request(
+    return RawRequest(
         method=method,
         url=url,
         headers=headers,
