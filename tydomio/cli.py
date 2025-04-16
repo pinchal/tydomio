@@ -6,8 +6,8 @@ import logging
 import os
 import sys
 
-from tydomio.client import AsyncTydomClient, Request
-from tydomio.model import parse_config
+from tydomio.client import AsyncTydomClient
+from tydomio.requests import PingRequest
 
 
 def main() -> int:
@@ -74,22 +74,29 @@ def main() -> int:
     return 0
 
 
-async def _poll_config(client: AsyncTydomClient) -> None:
+# async def _poll_config(client: AsyncTydomClient) -> None:
+#     while True:
+#         response = await client.send(
+#             Request(
+#                 method="GET",
+#                 url="/configs/file",
+#                 headers={
+#                     "Content-Type": "application/json; charset=UTF-8",
+#                 },
+#             )
+#         )
+#         #     CLIENT_LOGGER.info("JSON\n\n%s\n\n", response.content.decode("utf-8"))
+#         if response.content is not None:
+#             config = parse_config(response.content.decode("utf-8"))
+#             logging.info(config)
+#         await asyncio.sleep(10)
+
+
+async def _ping(client: AsyncTydomClient) -> None:
     while True:
-        response = await client.send(
-            Request(
-                method="GET",
-                url="/configs/file",
-                headers={
-                    "Content-Type": "application/json; charset=UTF-8",
-                },
-            )
-        )
-        #     CLIENT_LOGGER.info("JSON\n\n%s\n\n", response.content.decode("utf-8"))
-        if response.content is not None:
-            config = parse_config(response.content.decode("utf-8"))
-            logging.info(config)
-        await asyncio.sleep(10)
+        response = await client.send(PingRequest())
+        logging.info(response)
+        await asyncio.sleep(5)
 
 
 def _do_run(args: argparse.Namespace) -> int:
@@ -97,7 +104,7 @@ def _do_run(args: argparse.Namespace) -> int:
         tydom_password=args.tydom_password,
         tydom_ip=args.tydom_ip,
         tydom_mac=args.tydom_mac,
-        on_connection_routines=(_poll_config,),
+        on_connection_routines=(_ping,),
     )
 
     try:
