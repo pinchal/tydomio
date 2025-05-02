@@ -74,32 +74,3 @@ class Config(BaseModel):
     id_catalog: str
     version: str
     zigbee_networks: list[ZigbeeNetwork]
-
-
-def parse_config(json_data: str) -> Config:
-    """Parse a JSON string and return a Config object.
-
-    Args:
-        json_data (str): A JSON-formatted string representing the configuration.
-
-    Returns:
-        Config: An instance of the Config class.
-
-    Raises:
-        ValidationError: If the JSON data is invalid or does not conform to the schema.
-
-    """
-    return Config.model_validate_json(json_data)
-
-
-def serialize_config(config: Config) -> str:
-    """Serialize a Config object into a JSON string.
-
-    Args:
-        config (Config): The configuration object to serialize.
-
-    Returns:
-        str: A JSON string representation of the configuration object.
-
-    """
-    return config.model_dump_json()
