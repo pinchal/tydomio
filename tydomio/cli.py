@@ -5,9 +5,15 @@ import asyncio
 import logging
 import os
 import sys
+from pprint import pformat
 
 from tydomio.client import AsyncTydomClient
-from tydomio.requests import PingRequest
+from tydomio.requests import (
+    GetConfigFile,
+    RefreshAll,
+    TydomPutAreasDataRequest,
+    TydomPutDevicesDataRequest,
+)
 
 
 def main() -> int:
@@ -38,7 +44,18 @@ def main() -> int:
 
     parser.add_argument("action", choices=["run", "get-tydom-password"])
 
-    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable debug logs",
+    )
+
+    parser.add_argument(
+        "--debug-asyncio",
+        action="store_true",
+        help="Enable asyncio debug mode",
+    )
 
     parser.add_argument(
         "--tydom-ip",
@@ -66,7 +83,10 @@ def main() -> int:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("asyncio").setLevel(logging.WARNING)
-    logging.getLogger("websockets").setLevel(logging.DEBUG)
+    logging.getLogger("websockets").setLevel(logging.WARNING)
+
+    if args.debug_asyncio:
+        os.environ["PYTHONASYNCIODEBUG"] = "1"
 
     if args.action == "run":
         return _do_run(args)
@@ -74,29 +94,24 @@ def main() -> int:
     return 0
 
 
-# async def _poll_config(client: AsyncTydomClient) -> None:
-#     while True:
-#         response = await client.send(
-#             Request(
-#                 method="GET",
-#                 url="/configs/file",
-#                 headers={
-#                     "Content-Type": "application/json; charset=UTF-8",
-#                 },
-#             )
-#         )
-#         #     CLIENT_LOGGER.info("JSON\n\n%s\n\n", response.content.decode("utf-8"))
-#         if response.content is not None:
-#             config = parse_config(response.content.decode("utf-8"))
-#             logging.info(config)
-#         await asyncio.sleep(10)
-
-
-async def _ping(client: AsyncTydomClient) -> None:
+async def _poll_config_then_refresh_all(client: AsyncTydomClient) -> None:
     while True:
-        response = await client.send(PingRequest())
-        logging.info(response)
-        await asyncio.sleep(5)
+        response = await client.send(
+            GetConfigFile(),
+        )
+        logging.info(pformat(response.config.__dict__))
+        await client.send(RefreshAll())
+        await asyncio.sleep(300)
+
+
+async def _handle_put_device_data(put_devices: TydomPutDevicesDataRequest) -> None:
+    logging.info("Received put devices data")
+    logging.info(put_devices.data)
+
+
+async def _handle_put_areas_data(put_areas: TydomPutAreasDataRequest) -> None:
+    logging.info("Received put areas data")
+    logging.info(put_areas.data)
 
 
 def _do_run(args: argparse.Namespace) -> int:
@@ -104,7 +119,11 @@ def _do_run(args: argparse.Namespace) -> int:
         tydom_password=args.tydom_password,
         tydom_ip=args.tydom_ip,
         tydom_mac=args.tydom_mac,
-        on_connection_routines=(_ping,),
+        on_connection_routines=(_poll_config_then_refresh_all,),
+        tydom_request_handlers=(
+            _handle_put_device_data,
+            _handle_put_areas_data,
+        ),
     )
 
     try:
