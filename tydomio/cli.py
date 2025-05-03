@@ -5,15 +5,9 @@ import asyncio
 import logging
 import os
 import sys
-from pprint import pformat
 
 from tydomio.client import AsyncTydomClient
-from tydomio.requests import (
-    GetConfigFile,
-    RefreshAll,
-    TydomPutAreasDataRequest,
-    TydomPutDevicesDataRequest,
-)
+from tydomio.state import TydomState
 
 
 def main() -> int:
@@ -94,35 +88,17 @@ def main() -> int:
     return 0
 
 
-async def _poll_config_then_refresh_all(client: AsyncTydomClient) -> None:
-    while True:
-        response = await client.send(
-            GetConfigFile(),
-        )
-        logging.info(pformat(response.config.__dict__))
-        await client.send(RefreshAll())
-        await asyncio.sleep(300)
-
-
-async def _handle_put_device_data(put_devices: TydomPutDevicesDataRequest) -> None:
-    logging.info("Received put devices data")
-    logging.info(put_devices.data)
-
-
-async def _handle_put_areas_data(put_areas: TydomPutAreasDataRequest) -> None:
-    logging.info("Received put areas data")
-    logging.info(put_areas.data)
-
-
 def _do_run(args: argparse.Namespace) -> int:
+    state = TydomState()
+
     client = AsyncTydomClient(
         tydom_password=args.tydom_password,
         tydom_ip=args.tydom_ip,
         tydom_mac=args.tydom_mac,
-        on_connection_routines=(_poll_config_then_refresh_all,),
+        on_connection_routines=(state.on_connection,),
         tydom_request_handlers=(
-            _handle_put_device_data,
-            _handle_put_areas_data,
+            state.handle_put_devices_data,
+            state.handle_put_areas_data,
         ),
     )
 

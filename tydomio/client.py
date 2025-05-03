@@ -5,7 +5,7 @@ import logging
 import re
 import ssl
 from collections.abc import Callable, Coroutine
-from typing import Any, TypeVar, get_type_hints
+from typing import Any, get_type_hints
 
 import httpx
 import websockets.auth
@@ -20,6 +20,7 @@ from .requests import (
     TydomPutAreasDataRequest,
     TydomPutDevicesDataRequest,
     TydomRequest,
+    TydomRequestT,
 )
 from .response import Response, ResponseT
 
@@ -27,7 +28,6 @@ CLIENT_LOGGER = logging.getLogger("tydomio.client")
 REQUEST_LOGGER = CLIENT_LOGGER.getChild("request")
 RESPONSE_LOGGER = CLIENT_LOGGER.getChild("response")
 
-TydomRequestT = TypeVar("TydomRequestT", bound=TydomRequest)
 
 OnConnectionRoutine = Callable[["AsyncTydomClient"], Coroutine[Any, Any, None]]
 OnDisconnectionRoutine = Callable[[], Coroutine[Any, Any, None]]
@@ -260,7 +260,10 @@ class AsyncTydomClient:
         After processing, it clears the `_requests_in_progress` dictionary.
         """
         for future in self._requests_in_progress.values():
-            future.exception()
+            try:
+                future.exception()
+            except asyncio.CancelledError:
+                pass
         self._requests_in_progress = {}
 
     async def wait_unit_connected(self) -> None:

@@ -121,7 +121,9 @@ class ConfigResponse(Response):
             raise InvalidResponse()
 
         try:
-            self.config = config_mdl.Config.model_validate_json(response.content)
+            self.config: config_mdl.Config = config_mdl.Config.model_validate_json(
+                response.content
+            )
 
         except pydantic.ValidationError as error:
             raise InvalidResponse() from error

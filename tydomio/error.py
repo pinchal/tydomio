@@ -9,9 +9,9 @@ class CommunicationError(TydomIoError):
     """Exception raised for communication errors with Tydom."""
 
 
-class InvalidResponse(CommunicationError):
+class InvalidResponse(TydomIoError):
     """Exception raised for invalid responses from Tydom."""
 
 
-class InvalidRequest(CommunicationError):
+class InvalidRequest(TydomIoError):
     """Exception raised for invalid requests from Tydom."""

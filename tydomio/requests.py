@@ -1,7 +1,6 @@
 """Requests for the Tydom API."""
 
 import itertools
-import json
 import random
 from abc import ABC
 from dataclasses import dataclass, field
@@ -29,6 +28,7 @@ class _ResponseInitProtocol(Protocol):
 
 ResponseT = TypeVar("ResponseT", bound=_ResponseInitProtocol)
 DataModelT = TypeVar("DataModelT", bound=pydantic.BaseModel)
+TydomRequestT = TypeVar("TydomRequestT", bound="TydomRequest")
 
 
 @dataclass
@@ -78,7 +78,7 @@ class Request:
 class JsonRequest(Request):
     """A standard Request used for development.
 
-    It only parses the JSON content and save it in a file.
+    It save content in a file without parsing it.
     """
 
     def __init__(
@@ -97,19 +97,14 @@ class JsonRequest(Request):
             transaction_id=None,
         )
 
-        if self.headers.get("content-type") != "application/json":
+        if self.headers.get("content-type") != "application/json" or content is None:
             raise InvalidRequest("Invalid content type")
-
-        try:
-            self.json_content = json.loads(self.content) if self.content else None
-        except json.JSONDecodeError as error:
-            raise InvalidRequest(self.content) from error
 
         if DEV_MODE:
             file_name = f"request_{self.method}_{self.url.replace('/', '_')}.json"
             file_path = _MODULE_DIRECTORY_PATH / file_name
-            with open(file_path, "w", encoding="utf-8") as file:
-                json.dump(self.json_content, file, indent=4, ensure_ascii=False)
+            with open(file_path, "wb") as file:
+                file.write(content)
 
 
 class TydomRequest(Request):
@@ -121,7 +116,6 @@ class TydomRequest(Request):
         url: str,
         headers: dict[str, str],
         content: bytes | None,
-        data_model_type: type[DataModelT],
     ) -> None:
         """Interpret the request from the server."""
         super().__init__(
@@ -131,14 +125,6 @@ class TydomRequest(Request):
             content=content,
             transaction_id=None,
         )
-
-        if self.content is None:
-            raise InvalidRequest("No content in the request")
-
-        try:
-            self.data: DataModelT = data_model_type.model_validate_json(self.content)
-        except pydantic.ValidationError as error:
-            raise InvalidRequest() from error
 
 
 class TydomPutDevicesDataRequest(TydomRequest):
@@ -157,8 +143,14 @@ class TydomPutDevicesDataRequest(TydomRequest):
             url=url,
             headers=headers,
             content=content,
-            data_model_type=DevicesData,
         )
+        if self.content is None:
+            raise InvalidRequest("No content in the request")
+
+        try:
+            self.data = DevicesData.model_validate_json(self.content)
+        except pydantic.ValidationError as error:
+            raise InvalidRequest() from error
 
 
 class TydomPutAreasDataRequest(TydomRequest):
@@ -177,8 +169,14 @@ class TydomPutAreasDataRequest(TydomRequest):
             url=url,
             headers=headers,
             content=content,
-            data_model_type=AreasData,
         )
+        if self.content is None:
+            raise InvalidRequest("No content in the request")
+
+        try:
+            self.data = AreasData.model_validate_json(self.content)
+        except pydantic.ValidationError as error:
+            raise InvalidRequest() from error
 
 
 class ClientRequest(Request, Generic[ResponseT], ABC):
