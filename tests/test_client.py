@@ -23,20 +23,15 @@ from tydomio.client import (
     OnConnectionRoutine,
     OnDisconnectionRoutine,
     TydomRequestHandler,
-    parse_message,
-    parse_request,
-    parse_response,
 )
-from tydomio.error import CommunicationError, InvalidRequest, TydomIoError
+from tydomio.error import CommunicationError, TydomIoError
 from tydomio.requests import (
-    JsonRequest,
     PingRequest,
-    Request,
     TydomPutAreasDataRequest,
     TydomPutDevicesDataRequest,
     TydomRequest,
 )
-from tydomio.response import Ok, Response
+from tydomio.response import Ok
 
 DEVICES_DATA = b'[{"id": 1, "endpoints": []}]'
 AREAS_DATA = b'[{"id": 1, "error": 0, "data": []}]'
@@ -133,104 +128,6 @@ async def push_to_handlers(
         FakeConnectionFactory(FakeWebsocket(*messages)), handlers=handlers
     )
     await run_then_cancel(client, handled)
-
-
-def test_parse_response_reads_status() -> None:
-    response = parse_response(b"HTTP/1.1 404 Not Found\r\n\r\n")
-
-    assert response.status == 404
-
-
-def test_parse_response_lowercases_header_names() -> None:
-    response = parse_response(b"HTTP/1.1 200 OK\r\nTransac-Id: 12\r\n\r\n")
-
-    assert response.headers == {"transac-id": "12"}
-
-
-def test_parse_response_keeps_content() -> None:
-    response = parse_response(b"HTTP/1.1 200 OK\r\n\r\n{}")
-
-    assert response.content == b"{}"
-
-
-def test_parse_response_empty_content_is_none() -> None:
-    response = parse_response(b"HTTP/1.1 200 OK\r\n\r\n")
-
-    assert response.content is None
-
-
-def test_parse_message_reads_response() -> None:
-    message = parse_message(b"HTTP/1.1 200 OK\r\n\r\n", cmd_prefix=b"")
-
-    assert isinstance(message, Response)
-
-
-def test_parse_message_reads_prefixed_response() -> None:
-    message = parse_message(b"\x02HTTP/1.1 200 OK\r\n\r\n", cmd_prefix=b"\x02")
-
-    assert isinstance(message, Response)
-
-
-def test_parse_message_reads_request() -> None:
-    message = parse_message(put("/other", b"{}"), cmd_prefix=b"")
-
-    assert isinstance(message, Request)
-
-
-def test_parse_request_reads_method_url_and_headers() -> None:
-    request = parse_request(put("/other", b"{}"))
-
-    assert (request.method, request.url, request.headers) == (
-        "PUT",
-        "/other",
-        {"content-type": "application/json"},
-    )
-
-
-def test_parse_request_empty_content_is_none() -> None:
-    request = parse_request(
-        b"GET /a HTTP/1.1\r\nContent-Type: application/json\r\n\r\n"
-    )
-
-    assert request.content is None
-
-
-def test_parse_request_types_devices_data() -> None:
-    request = parse_request(put("/devices/data", DEVICES_DATA))
-
-    assert isinstance(request, TydomPutDevicesDataRequest)
-
-
-def test_parse_request_types_areas_data() -> None:
-    request = parse_request(put("/areas/data", AREAS_DATA))
-
-    assert isinstance(request, TydomPutAreasDataRequest)
-
-
-def test_parse_request_falls_back_to_json_on_invalid_data() -> None:
-    request = parse_request(put("/devices/data", b'{"unexpected": true}'))
-
-    assert type(request) is JsonRequest
-
-
-def test_parse_request_other_url_is_json_request() -> None:
-    request = parse_request(put("/other", b"{}"))
-
-    assert type(request) is JsonRequest
-
-
-def test_parse_request_rejects_invalid_request_line() -> None:
-    with pytest.raises(InvalidRequest):
-        parse_request(b"PUT /devices/data HTTP/1.0\r\n\r\n")
-
-
-def test_parse_request_removes_chunk_framing() -> None:
-    chunk = b"{}"
-    framed = f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n0\r\n\r\n"
-
-    request = parse_request(put("/other", framed))
-
-    assert request.content == chunk
 
 
 def test_client_accepts_handler_of_tydom_request_subclass() -> None:
@@ -581,6 +478,66 @@ async def test_read_loop_keeps_reading_after_handler_error() -> None:
     )
 
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        put("/other", b"not json"),
+        b"PUT /a HTTP/1.1\r\nDate: Sat, 31 Oct 2026 10:00:00 GMT\r\n\r\n",
+        b"PUT /a HTTP/1.1\r\nno colon\r\n\r\n",
+        b"HTTP/1.1 abc OK\r\n\r\n",
+        b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\nzz\r\n",
+    ],
+)
+async def test_read_loop_keeps_reading_after_malformed_message(
+    malformed: bytes,
+) -> None:
+    handled = asyncio.Event()
+
+    async def handler(_request: TydomPutDevicesDataRequest) -> None:
+        handled.set()
+
+    # well before the timeout of the unanswered ping
+    async with asyncio.timeout(1):
+        await push_to_handlers(
+            malformed,
+            put("/devices/data", DEVICES_DATA),
+            handlers=(handler,),
+            handled=handled,
+        )
+
+    assert handled.is_set()
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        put("/other", b"marker"),
+        b"HTTP/1.1 200 OK\r\ntransac-id: 0\r\nname: marker\r\n\r\nmarker",
+    ],
+    ids=["malformed", "unexpected-response"],
+)
+async def test_read_loop_logs_no_content_above_debug(
+    message: bytes, caplog: pytest.LogCaptureFixture
+) -> None:
+    handled = asyncio.Event()
+
+    async def handler(_request: TydomPutDevicesDataRequest) -> None:
+        handled.set()
+
+    with caplog.at_level(logging.DEBUG):
+        async with asyncio.timeout(1):
+            await push_to_handlers(
+                message,
+                put("/devices/data", DEVICES_DATA),
+                handlers=(handler,),
+                handled=handled,
+            )
+
+    formatter = logging.Formatter()
+    above_debug = [r for r in caplog.records if r.levelno > logging.DEBUG]
+    assert not any("marker" in formatter.format(r) for r in above_debug)
 
 
 async def test_handler_receives_the_response_to_its_request() -> None:

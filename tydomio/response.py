@@ -25,6 +25,12 @@ class _ResponseInitProtocol(Protocol):
 ResponseT = TypeVar("ResponseT", bound="Response")
 
 
+def has_json_content(headers: dict[str, str]) -> bool:
+    """Whether the content type is JSON, whatever its case and parameters."""
+    media_type = headers.get("content-type", "").split(";", 1)[0]
+    return media_type.strip().lower() == "application/json"
+
+
 @dataclass(kw_only=True)
 class Response(_ResponseInitProtocol):
     """The Response.
@@ -62,10 +68,7 @@ class JsonResponse(Response):
             content=response.content,
         )
 
-        if (
-            self.status not in valid_status_codes
-            or self.headers.get("content-type") != "application/json"
-        ):
+        if self.status not in valid_status_codes or not has_json_content(self.headers):
             raise InvalidResponse(response)
 
         try:
