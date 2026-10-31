@@ -110,19 +110,19 @@ async def _poll_config_then_refresh_all(client: AsyncTydomClient) -> None:
         response = await client.send(
             GetConfigFile(),
         )
-        logging.info(pformat(response.config.__dict__))
+        logging.debug(pformat(response.config.__dict__))
         await client.send(RefreshAll())
         await asyncio.sleep(300)
 
 
 async def _handle_put_device_data(put_devices: TydomPutDevicesDataRequest) -> None:
     logging.info("Received put devices data")
-    logging.info(put_devices.data)
+    logging.debug(put_devices.data)
 
 
 async def _handle_put_areas_data(put_areas: TydomPutAreasDataRequest) -> None:
     logging.info("Received put areas data")
-    logging.info(put_areas.data)
+    logging.debug(put_areas.data)
 
 
 def _do_run(
