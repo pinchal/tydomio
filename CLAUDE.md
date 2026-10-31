@@ -49,7 +49,7 @@ Make the simplest change that fully solves the task.
   connection). Heating is driven by a heat pump through a Typass ATL gateway: known
   modes (away, off, eco) can put zones in frost protection, so heating commands are
   never sent by tests, examples or default routines.
-- Tests run against fixtures and a local fake server, never against the box.
+- Tests run against fixtures and minimal injected doubles, never against the box.
 
 ## Secrets and personal data
 
@@ -83,12 +83,14 @@ Test what would cost if it broke: protocol parsing, the data model, the client s
 machine (connection, reconnection, timeouts), and every bug fixed.
 
 - **Orthogonal.** One behaviour per test, one reason to fail. Tests are independent: no
-  shared state, no imposed order, no network outside the local fake server.
+  shared state, no imposed order, no network: the network boundary is replaced by
+  minimal injected doubles (a fake websocket replaying scripted bytes,
+  `httpx.MockTransport`), never by a simulator or a fake Tydom server.
 - **One level per behaviour.** A behaviour is asserted at one level only, unit or end to
   end; other tests may run it, not re-assert it. No test restates a file, a constant or
   a configuration.
 - **End to end.** At least one scenario per entry point (library client, CLI), from its
-  user's side, against the fake server.
+  user's side, against those injected doubles.
 - **Change.** An intended behaviour change edits only the tests that carry it, in the
   same pull request, with the reason in the commit. A test of another behaviour that
   breaks is a stop sign.
@@ -173,7 +175,7 @@ Stop, explain in plain words what was reached, and wait for the user:
 - Checks: `uv run pre-commit run --all-files`.
 - CLI: `uv run tydomio-cli run`, configured by `TYDOM_IP`, `TYDOM_PASSWORD`,
   `TYDOM_MAC_ADDRESS`. It connects to the real box: ask the user first.
-- Tests: none yet.
+- Tests: `uv run coverage run -m pytest`, then `uv run coverage report`.
 
 ## Module map
 
