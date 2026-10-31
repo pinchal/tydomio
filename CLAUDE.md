@@ -169,7 +169,7 @@ Stop, explain in plain words what was reached, and wait for the user:
 
 ## Run and test
 
-- Python 3.12 (`uv sync -p 3.12`): the pinned `pydantic` has no wheel for 3.14 yet.
+- Python 3.14 or newer: `uv sync`.
 - Checks: `uv run pre-commit run --all-files`.
 - CLI: `uv run tydomio run`, configured by `TYDOM_IP`, `TYDOM_PASSWORD`,
   `TYDOM_MAC_ADDRESS`. It connects to the real box: ask the user first.

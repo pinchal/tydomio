@@ -22,7 +22,7 @@ TRANSACTION_COUNTER = itertools.count(random.randint(1, 100000000))
 class _ResponseInitProtocol(Protocol):
     """Protocol for the response initialization."""
 
-    def __init__(self, response: "Response") -> None:
+    def __init__(self, response: Response) -> None:
         """Initialize the response with the given response object."""
 
 

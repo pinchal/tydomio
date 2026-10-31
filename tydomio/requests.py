@@ -6,7 +6,7 @@ import random
 from abc import ABC
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Generic, Protocol, TypeVar
+from typing import Protocol, TypeVar
 
 import pydantic
 
@@ -27,7 +27,6 @@ class _ResponseInitProtocol(Protocol):
         """Initialize the response with the given response object."""
 
 
-ResponseT = TypeVar("ResponseT", bound=_ResponseInitProtocol)
 DataModelT = TypeVar("DataModelT", bound=pydantic.BaseModel)
 
 
@@ -181,7 +180,7 @@ class TydomPutAreasDataRequest(TydomRequest):
         )
 
 
-class ClientRequest(Request, Generic[ResponseT], ABC):
+class ClientRequest[ResponseT: _ResponseInitProtocol](Request, ABC):
     """The ClientRequest.
 
     - This one can only be sent by the client to the Tydom

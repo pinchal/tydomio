@@ -8,8 +8,8 @@ from collections.abc import Callable, Coroutine
 from typing import Any, TypeVar, get_type_hints
 
 import httpx
-import websockets.auth
-from websockets import WebSocketClientProtocol
+from websockets.asyncio.client import ClientConnection, connect
+from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 from .error import CommunicationError, InvalidRequest
 from .requests import (
@@ -45,6 +45,7 @@ class AsyncTydomClient:
 
     def __init__(
         self,
+        *,
         tydom_password: str,
         tydom_ip: str | None,
         tydom_mac: str,
@@ -74,7 +75,7 @@ class AsyncTydomClient:
         if self._local_access:
             self._ssl_context.options |= 0x4
 
-        self._websocket: WebSocketClientProtocol | None = None
+        self._websocket: ClientConnection | None = None
         self._requests_in_progress: dict[int, asyncio.Future[Response]] = {}
         self._connexion_st_cond = asyncio.Condition()
 
@@ -144,7 +145,7 @@ class AsyncTydomClient:
             try:
                 authorization = await self._get_authorization()
 
-            except (httpx.ConnectError, httpx.ConnectTimeout):
+            except httpx.ConnectError, httpx.ConnectTimeout:
                 # wait and retry
                 CLIENT_LOGGER.warning("Unable to reach %s", self._tydom_target)
                 await asyncio.sleep(wait_between_retry)
@@ -152,10 +153,10 @@ class AsyncTydomClient:
 
             try:
                 # open websocket
-                async with websockets.connect(
+                async with connect(
                     uri=f"wss://{self._tydom_target}:443"
                     f"/mediation/client?mac={self._tydom_mac}&appli=1",
-                    extra_headers={"Authorization": authorization},
+                    additional_headers={"Authorization": authorization},
                     ssl=self._ssl_context,
                     ping_interval=None,  # the tydom does not answer to ping
                     close_timeout=self._default_timeout,
@@ -176,7 +177,7 @@ class AsyncTydomClient:
                 for error in error_group.exceptions:  # pylint: disable=no-member
                     CLIENT_LOGGER.warning("Connection lost: %s", error)
 
-            except* websockets.exceptions.InvalidStatusCode:
+            except* InvalidStatus:
                 # this is probably due to a 401, break
                 CLIENT_LOGGER.error("Invalid authentication")
                 self._websocket = None
@@ -233,7 +234,7 @@ class AsyncTydomClient:
                         future_result.set_result(parsed_msg)
                         del self._requests_in_progress[response_transac_id]
 
-        except websockets.ConnectionClosed as error:
+        except ConnectionClosed as error:
             raise CommunicationError("Connection closed") from error
 
     async def _ping(self) -> None:
@@ -324,7 +325,7 @@ class AsyncTydomClient:
         )
         try:
             await self._websocket.send(request.to_bytes(cmd_prefix=self._cmd_prefix))
-        except websockets.ConnectionClosed as error:
+        except ConnectionClosed as error:
             raise CommunicationError("Connection closed") from error
 
         try:
