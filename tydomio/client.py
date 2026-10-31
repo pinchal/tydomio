@@ -13,6 +13,7 @@ from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 from . import network
 from .error import CommunicationError, InvalidRequest, TydomIoError
+from .pending_requests import PendingRequests
 from .requests import (
     ClientRequest,
     JsonRequest,
@@ -122,7 +123,7 @@ class AsyncTydomClient:
         self._sleep = sleep
 
         self._websocket: WebsocketConnection | None = None
-        self._requests_in_progress: dict[int, asyncio.Future[Response]] = {}
+        self._pending_requests = PendingRequests()
         self._connexion_st_cond = asyncio.Condition()
 
         self._default_timeout = default_timeout
@@ -218,7 +219,7 @@ class AsyncTydomClient:
                 await self._websocket.close()
                 self._websocket = None
 
-            await self._flush_request_in_progress()
+            self._pending_requests.flush()
 
             if exiting:
                 return
@@ -247,17 +248,12 @@ class AsyncTydomClient:
                         CLIENT_LOGGER.exception("Error in request handler")
 
                 elif isinstance(parsed_msg, Response):
-                    response_transac_id = parsed_msg.transac_id
-                    if response_transac_id not in self._requests_in_progress:
+                    if not self._pending_requests.resolve(parsed_msg):
                         CLIENT_LOGGER.warning(
                             "Got an unexpected response %s", parsed_msg.status
                         )
                         CLIENT_LOGGER.warning("Headers %s", parsed_msg.headers)
                         CLIENT_LOGGER.warning("Content %s", parsed_msg.content)
-                    else:
-                        future_result = self._requests_in_progress[response_transac_id]
-                        future_result.set_result(parsed_msg)
-                        del self._requests_in_progress[response_transac_id]
 
         except ConnectionClosed as error:
             raise CommunicationError("Connection closed") from error
@@ -275,19 +271,6 @@ class AsyncTydomClient:
         while True:
             await self.send(PingRequest())
             await self._sleep(self._ping_interval)
-
-    async def _flush_request_in_progress(self) -> None:
-        """Asynchronously flushes all pending requests in progress.
-
-        This method iterates through all futures in `_requests_in_progress`,
-        ensuring that any exceptions raised by these futures are retrieved
-        and ignored, avoiding asyncio error logs.
-
-        After processing, it clears the `_requests_in_progress` dictionary.
-        """
-        for future in self._requests_in_progress.values():
-            future.exception()
-        self._requests_in_progress = {}
 
     async def wait_unit_connected(self) -> None:
         """Wait asynchronously until the unit is connected.
@@ -334,15 +317,14 @@ class AsyncTydomClient:
 
         if (
             request.transaction_id is None
-            or request.transaction_id in self._requests_in_progress
+            or request.transaction_id in self._pending_requests
         ):
             raise TydomIoError("The request needs a unique transaction id")
 
         if self._websocket is None:
             raise RuntimeError("Not connected")
 
-        future_response: asyncio.Future[Response] = asyncio.Future()
-        self._requests_in_progress[request.transaction_id] = future_response
+        future_response = self._pending_requests.register(request.transaction_id)
 
         CLIENT_LOGGER.debug(
             "Sending request '%s' with transaction id %s",
@@ -366,12 +348,12 @@ class AsyncTydomClient:
             return response
 
         except asyncio.exceptions.TimeoutError as timeout_error:
-            del self._requests_in_progress[request.transaction_id]
+            self._pending_requests.abandon(request.transaction_id)
             raise CommunicationError("Request timeout") from timeout_error
 
     def get_number_of_requests_in_progress(self) -> int:
         """Get the number of requests in progress."""
-        return len(self._requests_in_progress)
+        return len(self._pending_requests)
 
 
 def parse_message(message: bytes, cmd_prefix: bytes) -> Response | Request:

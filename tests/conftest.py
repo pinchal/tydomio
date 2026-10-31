@@ -1,7 +1,7 @@
 """Minimal doubles of the network boundary, shared by the tests."""
 
 import asyncio
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 AUTHORIZATION = "Digest test"
@@ -14,31 +14,37 @@ class ScriptExhaustedError(Exception):
 class FakeWebsocket:
     """Replays scripted messages, records what is sent and whether it is closed."""
 
-    def __init__(self, *messages: bytes) -> None:
-        """Replay the messages, then hold the connection open until closed."""
-        self._messages = messages
-        self._closed = asyncio.Event()
-        self.sent: list[bytes] = []
+    def __init__(
+        self, *messages: bytes, reply: Callable[[bytes], bytes | None] | None = None
+    ) -> None:
+        """Replay the messages, then hold the connection open until closed.
 
-    @property
-    def closed(self) -> bool:
-        """Whether close was called."""
-        return self._closed.is_set()
+        :param reply: called with each message sent, gives the message to receive in
+        return, if any, or raises the error of the send
+        """
+        # None ends the iteration, as websockets does once closed locally
+        self._incoming: asyncio.Queue[bytes | None] = asyncio.Queue()
+        for message in messages:
+            self._incoming.put_nowait(message)
+        self._reply = reply
+        self.sent: list[bytes] = []
+        self.closed = False
 
     async def send(self, message: bytes, /) -> None:
-        """Record the message."""
+        """Record the message and receive its reply."""
         self.sent.append(message)
+        if self._reply is not None and (reply := self._reply(message)) is not None:
+            self._incoming.put_nowait(reply)
 
     async def __aiter__(self) -> AsyncIterator[bytes]:
-        """Yield the scripted messages, then end as websockets does."""
-        for message in self._messages:
+        """Yield the scripted messages and replies, then end as websockets does."""
+        while (message := await self._incoming.get()) is not None:
             yield message
-        # websockets ends the iteration once the connection is closed locally
-        await self._closed.wait()
 
     async def close(self) -> None:
         """Record the closing."""
-        self._closed.set()
+        self.closed = True
+        self._incoming.put_nowait(None)
 
 
 class FakeConnectionFactory:
@@ -82,7 +88,9 @@ class FakeSleep:
     def __init__(self) -> None:
         """Start with no delay."""
         self.delays: list[float] = []
+        self.called = asyncio.Event()
 
     async def __call__(self, delay: float) -> None:
         """Record the delay."""
         self.delays.append(delay)
+        self.called.set()
