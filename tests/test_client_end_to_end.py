@@ -1,11 +1,14 @@
 import asyncio
 from contextlib import suppress
 
+from websockets.exceptions import ConnectionClosed
+
 from tests.conftest import (
     FakeAuthorizationProvider,
     FakeConnectionFactory,
     FakeSleep,
     FakeWebsocket,
+    ScriptExhaustedError,
     put,
     tydom_reply,
 )
@@ -50,8 +53,37 @@ async def test_user_reads_the_config_and_receives_pushed_devices_data() -> None:
     async with asyncio.timeout(1):
         await both_received.wait()
     run.cancel()
-    # how the loop ends on cancellation is not what this scenario asserts
-    with suppress(asyncio.CancelledError):
-        await run
+    await run
 
     assert [type(configs[0]), type(devices_data[0])] == [Config, DevicesData]
+
+
+def close_on_ping(sent: bytes) -> bytes:
+    """Lose the connection as soon as the client pings."""
+    raise ConnectionClosed(None, None)
+
+
+async def test_user_is_disconnected_then_reconnected_after_connection_lost() -> None:
+    connection_factory = FakeConnectionFactory(
+        FakeWebsocket(reply=close_on_ping), FakeWebsocket(reply=close_on_ping)
+    )
+    # number of connections opened when each disconnection routine runs
+    disconnections: list[int] = []
+
+    async def on_disconnection() -> None:
+        disconnections.append(len(connection_factory.authorizations))
+
+    client = AsyncTydomClient(
+        tydom_password="",
+        tydom_ip="192.0.2.1",
+        tydom_mac="000000000000",
+        on_disconnection_routines=(on_disconnection,),
+        authorization_provider=FakeAuthorizationProvider(),
+        connection_factory=connection_factory,
+        sleep=FakeSleep(),
+    )
+    # the script ends at the third connection
+    with suppress(ScriptExhaustedError):
+        await client.run_websocket()
+
+    assert disconnections == [1, 2]

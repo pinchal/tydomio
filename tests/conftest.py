@@ -23,17 +23,24 @@ class FakeWebsocket:
     """Replays scripted messages, records what is sent and whether it is closed."""
 
     def __init__(
-        self, *messages: bytes, reply: Callable[[bytes], bytes | None] | None = None
+        self,
+        *messages: bytes,
+        reply: Callable[[bytes], bytes | None] | None = None,
+        closed_by_tydom: bool = False,
     ) -> None:
         """Replay the messages, then hold the connection open until closed.
 
         :param reply: called with each message sent, gives the message to receive in
         return, if any, or raises the error of the send
+        :param closed_by_tydom: end the iteration after the messages, as websockets
+        does when the Tydom closes the connection cleanly
         """
         # None ends the iteration, as websockets does once closed locally
         self._incoming: asyncio.Queue[bytes | None] = asyncio.Queue()
         for message in messages:
             self._incoming.put_nowait(message)
+        if closed_by_tydom:
+            self._incoming.put_nowait(None)
         self._reply = reply
         self.sent: list[bytes] = []
         self.closed = False
@@ -56,11 +63,11 @@ class FakeWebsocket:
 
 
 class FakeConnectionFactory:
-    """Hands out the scripted websockets, then raises ScriptExhaustedError."""
+    """Hands out the scripted websockets or errors, then raises ScriptExhaustedError."""
 
-    def __init__(self, *websockets: FakeWebsocket) -> None:
-        """Give each websocket to one connection, in order."""
-        self._websockets = list(websockets)
+    def __init__(self, *outcomes: FakeWebsocket | Exception) -> None:
+        """Give each websocket to one connection, or raise each error, in order."""
+        self._outcomes = list(outcomes)
         self.authorizations: list[str] = []
         self.connected = asyncio.Event()
 
@@ -68,10 +75,13 @@ class FakeConnectionFactory:
     async def __call__(self, authorization: str) -> AsyncGenerator[FakeWebsocket]:
         """Record the authorization and open the next websocket."""
         self.authorizations.append(authorization)
-        if not self._websockets:
+        if not self._outcomes:
             raise ScriptExhaustedError
+        outcome = self._outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
         self.connected.set()
-        yield self._websockets.pop(0)
+        yield outcome
 
 
 class FakeAuthorizationProvider:

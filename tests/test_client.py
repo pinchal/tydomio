@@ -1,10 +1,13 @@
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 
 import httpx
 import pytest
-from websockets.exceptions import ConnectionClosed
+from websockets.datastructures import Headers
+from websockets.exceptions import ConnectionClosed, InvalidMessage, InvalidStatus
+from websockets.http11 import Response as HandshakeResponse
 
 from tests.conftest import (
     AUTHORIZATION,
@@ -78,18 +81,12 @@ async def run_until_script_ends(client: AsyncTydomClient) -> None:
 
 
 async def run_then_cancel(client: AsyncTydomClient, reached: asyncio.Event) -> None:
-    run = asyncio.create_task(cancellable_run(client))
+    run = asyncio.create_task(client.run_websocket())
     wait_reached = asyncio.create_task(reached.wait())
     await asyncio.wait((run, wait_reached), return_when=asyncio.FIRST_COMPLETED)
     wait_reached.cancel()
     run.cancel()
     await run
-
-
-async def cancellable_run(client: AsyncTydomClient) -> None:
-    # how the loop ends on cancellation is not what these tests assert
-    with suppress(asyncio.CancelledError):
-        await client.run_websocket()
 
 
 def ok_reply(sent: bytes) -> bytes:
@@ -99,16 +96,25 @@ def ok_reply(sent: bytes) -> bytes:
 
 
 async def send_once_connected(
-    websocket: FakeWebsocket, request: PingRequest, timeout: int | None = None
-) -> Ok | CommunicationError:
-    """Send the request from a connection routine, give its response or error."""
-    outcome: list[Ok | CommunicationError] = []
+    websocket: FakeWebsocket,
+    request: PingRequest,
+    timeout: int | None = None,
+    send: Callable[[AsyncTydomClient, PingRequest], Awaitable[Ok]] | None = None,
+) -> Ok | TydomIoError:
+    """Send the request from a connection routine, give its response or error.
+
+    :param send: sends the request, client.send with the timeout by default
+    """
+    outcome: list[Ok | TydomIoError] = []
     done = asyncio.Event()
 
     async def routine(client: AsyncTydomClient) -> None:
         try:
-            outcome.append(await client.send(request, timeout))
-        except CommunicationError as error:
+            if send is None:
+                outcome.append(await client.send(request, timeout))
+            else:
+                outcome.append(await send(client, request))
+        except TydomIoError as error:
             outcome.append(error)
         done.set()
 
@@ -256,9 +262,15 @@ async def test_send_requires_connection() -> None:
 
 
 @pytest.mark.parametrize(
-    "error", [httpx.ConnectError("unreachable"), httpx.ConnectTimeout("timeout")]
+    "error",
+    [
+        httpx.ConnectError("unreachable"),
+        httpx.ConnectTimeout("timeout"),
+        httpx.ReadError("reset"),
+        httpx.RemoteProtocolError("disconnected"),
+    ],
 )
-async def test_run_websocket_retries_authorization_after_a_pause_when_unreachable(
+async def test_run_websocket_retries_authorization_after_a_pause_on_transport_error(
     error: Exception,
 ) -> None:
     authorization_provider = FakeAuthorizationProvider(error)
@@ -272,6 +284,122 @@ async def test_run_websocket_retries_authorization_after_a_pause_when_unreachabl
     await run_until_script_ends(client)
 
     assert (sleep.delays, authorization_provider.calls) == ([5], 2)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ConnectionRefusedError("refused"),
+        TimeoutError("timeout"),
+        InvalidMessage("did not receive a valid HTTP response"),
+    ],
+)
+async def test_run_websocket_retries_after_a_pause_when_the_websocket_fails_to_open(
+    error: Exception,
+) -> None:
+    connection_factory = FakeConnectionFactory(error)
+    sleep = FakeSleep()
+    client = make_client_with_doubles(connection_factory, sleep=sleep)
+
+    await run_until_script_ends(client)
+
+    assert (sleep.delays, len(connection_factory.authorizations)) == ([5], 2)
+
+
+async def test_run_websocket_retries_after_a_pause_when_authentication_refused() -> (
+    None
+):
+    refused = InvalidStatus(HandshakeResponse(401, "Unauthorized", Headers()))
+    connection_factory = FakeConnectionFactory(refused)
+    sleep = FakeSleep()
+    client = make_client_with_doubles(connection_factory, sleep=sleep)
+
+    await run_until_script_ends(client)
+
+    assert (sleep.delays, len(connection_factory.authorizations)) == ([5], 2)
+
+
+async def test_run_websocket_fails_pending_requests_when_connection_lost() -> None:
+    request = PingRequest()
+    sent: list[bytes] = []
+
+    def reply(message: bytes) -> bytes | None:
+        sent.append(message)
+        if message == request.to_bytes(cmd_prefix=b""):
+            return None  # the response never comes
+        if request.to_bytes(cmd_prefix=b"") in sent:
+            raise ConnectionClosed(None, None)
+        return ok_reply(message)
+
+    connection_factory = FakeConnectionFactory(FakeWebsocket(reply=reply))
+    client = make_client_with_doubles(connection_factory)
+    run = asyncio.create_task(run_until_script_ends(client))
+    await connection_factory.connected.wait()
+
+    # well before the request timeout
+    async with asyncio.timeout(1):
+        with pytest.raises(CommunicationError):
+            await client.send(request)
+    await run
+
+
+async def test_run_websocket_raises_os_error_of_a_connection_routine() -> None:
+    async def routine(_client: AsyncTydomClient) -> None:
+        raise OSError("routine failed")
+
+    client = make_client_with_doubles(
+        FakeConnectionFactory(FakeWebsocket(), FakeWebsocket()),
+        on_connection=(routine,),
+    )
+
+    with pytest.raises(ExceptionGroup) as raised:
+        await client.run_websocket()
+
+    assert raised.group_contains(OSError)
+
+
+async def test_run_websocket_reconnects_when_the_tydom_closes_the_connection() -> None:
+    connection_factory = FakeConnectionFactory(
+        FakeWebsocket(closed_by_tydom=True), FakeWebsocket(closed_by_tydom=True)
+    )
+    # number of connections opened when each disconnection routine runs
+    disconnections: list[int] = []
+
+    async def routine() -> None:
+        disconnections.append(len(connection_factory.authorizations))
+
+    client = make_client_with_doubles(connection_factory, on_disconnection=(routine,))
+
+    # well before the timeout of the unanswered ping
+    async with asyncio.timeout(1):
+        await run_until_script_ends(client)
+
+    assert disconnections == [1, 2]
+
+
+async def test_wait_unit_connected_returns_once_connected() -> None:
+    client = make_client_with_doubles(FakeConnectionFactory(FakeWebsocket()))
+    run = asyncio.create_task(client.run_websocket())
+
+    async with asyncio.timeout(1):
+        await client.wait_unit_connected()
+    run.cancel()
+    await run
+
+
+async def test_wait_unit_connected_waits_again_once_disconnected() -> None:
+    client = make_client_with_doubles(FakeConnectionFactory(FakeWebsocket()))
+    run = asyncio.create_task(client.run_websocket())
+    async with asyncio.timeout(1):
+        await client.wait_unit_connected()
+    run.cancel()
+    await run
+
+    waiting = asyncio.create_task(client.wait_unit_connected())
+    await asyncio.sleep(0)
+
+    assert not waiting.done()
+    waiting.cancel()
 
 
 async def test_run_websocket_connects_with_the_authorization() -> None:
@@ -356,6 +484,28 @@ async def test_send_raises_communication_error_on_timeout() -> None:
     assert isinstance(outcome, CommunicationError)
 
 
+async def test_send_accepts_again_a_request_whose_sending_failed() -> None:
+    request = PingRequest()
+    failures: list[None] = []
+
+    def close_on_first_request(sent: bytes) -> bytes:
+        if sent == request.to_bytes(cmd_prefix=b"") and not failures:
+            failures.append(None)
+            raise ConnectionClosed(None, None)
+        return ok_reply(sent)
+
+    async def send_twice(client: AsyncTydomClient, request: PingRequest) -> Ok:
+        with suppress(CommunicationError):
+            await client.send(request)
+        return await client.send(request)
+
+    outcome = await send_once_connected(
+        FakeWebsocket(reply=close_on_first_request), request, send=send_twice
+    )
+
+    assert isinstance(outcome, Ok)
+
+
 async def test_send_raises_communication_error_when_connection_closed() -> None:
     request = PingRequest()
 
@@ -431,6 +581,47 @@ async def test_read_loop_keeps_reading_after_handler_error() -> None:
     )
 
     assert len(calls) == 2
+
+
+async def test_handler_receives_the_response_to_its_request() -> None:
+    responses: list[Ok] = []
+    handled = asyncio.Event()
+
+    async def handler(_request: TydomPutDevicesDataRequest) -> None:
+        responses.append(await client.send(PingRequest()))
+        handled.set()
+
+    client = make_client_with_doubles(
+        FakeConnectionFactory(
+            FakeWebsocket(put("/devices/data", DEVICES_DATA), reply=ok_reply)
+        ),
+        handlers=(handler,),
+    )
+
+    # well before the request timeout
+    async with asyncio.timeout(1):
+        await run_then_cancel(client, handled)
+
+    assert isinstance(responses[0], Ok)
+
+
+async def test_run_websocket_cancels_running_handlers_on_disconnection() -> None:
+    started = asyncio.Event()
+    cancelled: list[None] = []
+
+    async def handler(_request: TydomPutDevicesDataRequest) -> None:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.append(None)
+            raise
+
+    await push_to_handlers(
+        put("/devices/data", DEVICES_DATA), handlers=(handler,), handled=started
+    )
+
+    assert cancelled == [None]
 
 
 async def test_ping_sends_a_ping_then_waits_the_ping_interval() -> None:
