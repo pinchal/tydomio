@@ -5,11 +5,11 @@ import functools
 import logging
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
-from contextlib import AbstractAsyncContextManager
+from contextlib import AbstractAsyncContextManager, AsyncExitStack
 from typing import Any, Protocol, TypeVar, get_type_hints
 
 import httpx
-from websockets.exceptions import ConnectionClosed, InvalidStatus
+from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidStatus
 
 from . import network
 from .error import CommunicationError, InvalidRequest, TydomIoError
@@ -124,7 +124,7 @@ class AsyncTydomClient:
 
         self._websocket: WebsocketConnection | None = None
         self._pending_requests = PendingRequests()
-        self._connexion_st_cond = asyncio.Condition()
+        self._connected = asyncio.Event()
 
         self._default_timeout = default_timeout
         self._ping_interval = ping_interval
@@ -161,11 +161,7 @@ class AsyncTydomClient:
         }
 
     async def _get_authorization(self) -> str:
-        CLIENT_LOGGER.info(
-            "Get authorization from Tydom #%s on %s",
-            self._tydom_mac,
-            self._tydom_target,
-        )
+        CLIENT_LOGGER.info("Get authorization from Tydom")
         return await self._authorization_provider()
 
     async def run_websocket(self) -> None:
@@ -178,53 +174,81 @@ class AsyncTydomClient:
             try:
                 authorization = await self._get_authorization()
 
-            except httpx.ConnectError, httpx.ConnectTimeout:
-                # wait and retry
-                CLIENT_LOGGER.warning("Unable to reach %s", self._tydom_target)
+            except httpx.TransportError as error:
+                # any network failure of the request (connect, read, write, protocol)
+                CLIENT_LOGGER.warning("Unable to reach the Tydom: %r", error)
                 await self._sleep(wait_between_retry)
                 continue
 
+            retry_after_pause = False
             try:
-                # open websocket
-                async with self._connection_factory(authorization) as self._websocket:
-                    CLIENT_LOGGER.info("Connected to tydom")
+                async with AsyncExitStack() as connection:
+                    # only the opening may fail with a network or handshake error
+                    self._websocket = await self._open_websocket(
+                        connection, authorization
+                    )
+                    if self._websocket is None:
+                        retry_after_pause = True
+                    else:
+                        CLIENT_LOGGER.info("Connected to tydom")
+                        self._connected.set()
 
-                    async with asyncio.TaskGroup() as task_group:
-                        task_group.create_task(self._read_messages())
-                        task_group.create_task(self._ping())
-                        for connection_routine in self._on_connection_routines:
-                            task_group.create_task(connection_routine(self))
+                        async with asyncio.TaskGroup() as task_group:
+                            task_group.create_task(self._read_messages(task_group))
+                            task_group.create_task(self._ping())
+                            for connection_routine in self._on_connection_routines:
+                                task_group.create_task(connection_routine(self))
 
             except* asyncio.CancelledError:
                 CLIENT_LOGGER.info("Exiting...")
                 exiting = True
 
             except* CommunicationError as error_group:
-                for error in error_group.exceptions:  # pylint: disable=no-member
+                for error in error_group.exceptions:
                     CLIENT_LOGGER.warning("Connection lost: %s", error)
 
-            except* InvalidStatus:
-                # this is probably due to a 401, break
-                CLIENT_LOGGER.error("Invalid authentication")
-                self._websocket = None
-
-            try:
-                async with asyncio.TaskGroup() as task_group:
-                    for disconnection_routine in self._on_disconnection_routines:
-                        task_group.create_task(disconnection_routine())
-            except* RuntimeError:
-                CLIENT_LOGGER.exception("Error in disconnection routine")
-
-            if self._websocket is not None:
-                await self._websocket.close()
-                self._websocket = None
-
-            self._pending_requests.flush()
+            await self._disconnect()
 
             if exiting:
                 return
 
-    async def _read_messages(self) -> None:
+            if retry_after_pause:
+                await self._sleep(wait_between_retry)
+
+    async def _open_websocket(
+        self, connection: AsyncExitStack, authorization: str
+    ) -> WebsocketConnection | None:
+        """Open the websocket, closed with the connection; None if it failed."""
+        try:
+            return await connection.enter_async_context(
+                self._connection_factory(authorization)
+            )
+        except InvalidStatus:
+            # this is probably due to a 401
+            CLIENT_LOGGER.error("Invalid authentication")
+        # network (OSError, TimeoutError included) or handshake failure
+        except (OSError, InvalidHandshake) as error:
+            CLIENT_LOGGER.warning("Unable to open the websocket: %r", error)
+        return None
+
+    async def _disconnect(self) -> None:
+        self._connected.clear()
+        # fail the requests still waiting at once, rather than at their timeout
+        self._pending_requests.flush(CommunicationError("Connection lost"))
+
+        try:
+            async with asyncio.TaskGroup() as task_group:
+                for disconnection_routine in self._on_disconnection_routines:
+                    task_group.create_task(disconnection_routine())
+        except* RuntimeError:
+            CLIENT_LOGGER.exception("Error in disconnection routine")
+
+        if self._websocket is not None:
+            await self._websocket.close()
+            self._websocket = None
+
+    async def _read_messages(self, task_group: asyncio.TaskGroup) -> None:
+        """Read the messages, handlers run in the task group to keep reading."""
         if self._websocket is None:
             raise RuntimeError("Not connected")
 
@@ -235,17 +259,12 @@ class AsyncTydomClient:
                 parsed_msg = parse_message(message, self._cmd_prefix)
 
                 if isinstance(parsed_msg, TydomRequest):
-                    try:
-                        async with asyncio.TaskGroup() as task_group:
-                            for handler in self._on_tydom_request_routines.get(
-                                type(parsed_msg), ()
-                            ):
-                                task_group.create_task(
-                                    handler(parsed_msg)  # type: ignore
-                                )
-
-                    except* RuntimeError:
-                        CLIENT_LOGGER.exception("Error in request handler")
+                    for handler in self._on_tydom_request_routines.get(
+                        type(parsed_msg), ()
+                    ):
+                        task_group.create_task(
+                            _log_handler_error(handler(parsed_msg))  # type: ignore
+                        )
 
                 elif isinstance(parsed_msg, Response):
                     if not self._pending_requests.resolve(parsed_msg):
@@ -257,6 +276,9 @@ class AsyncTydomClient:
 
         except ConnectionClosed as error:
             raise CommunicationError("Connection closed") from error
+
+        # websockets ends the iteration when the Tydom closes the connection cleanly
+        raise CommunicationError("Connection closed")
 
     async def _ping(self) -> None:
         """Send a ping message to the Tydom device.
@@ -275,16 +297,13 @@ class AsyncTydomClient:
     async def wait_unit_connected(self) -> None:
         """Wait asynchronously until the unit is connected.
 
-        This method uses a condition variable to pause execution until the
-        `_websocket` attribute is no longer `None`, indicating that the connection
-        has been established.
+        It returns at once when the connection is already established.
 
         Raises:
             asyncio.CancelledError: If the task is cancelled while waiting.
 
         """
-        async with self._connexion_st_cond:
-            await self._connexion_st_cond.wait_for(lambda: self._websocket is not None)
+        await self._connected.wait()
 
     async def send(
         self, request: ClientRequest[ResponseT], timeout: int | None = None
@@ -334,6 +353,8 @@ class AsyncTydomClient:
         try:
             await self._websocket.send(request.to_bytes(cmd_prefix=self._cmd_prefix))
         except ConnectionClosed as error:
+            # no response will come, and nobody would retrieve the future's error
+            self._pending_requests.abandon(request.transaction_id)
             raise CommunicationError("Connection closed") from error
 
         try:
@@ -354,6 +375,14 @@ class AsyncTydomClient:
     def get_number_of_requests_in_progress(self) -> int:
         """Get the number of requests in progress."""
         return len(self._pending_requests)
+
+
+async def _log_handler_error(handling: Coroutine[Any, Any, None]) -> None:
+    """Run a request handler, logging its error rather than ending the connection."""
+    try:
+        await handling
+    except RuntimeError:
+        CLIENT_LOGGER.exception("Error in request handler")
 
 
 def parse_message(message: bytes, cmd_prefix: bytes) -> Response | Request:

@@ -39,12 +39,12 @@ class PendingRequests:
         """Stop waiting for the response to this request."""
         del self._futures[transaction_id]
 
-    def flush(self) -> None:
-        """Forget every pending request.
+    def flush(self, error: Exception) -> None:
+        """Fail every pending request with the error, then forget them.
 
-        The exceptions of the futures are retrieved and ignored, avoiding asyncio
-        error logs.
+        A future already done, i.e. cancelled with its waiting task, is left as is.
         """
         for future in self._futures.values():
-            future.exception()
+            if not future.done():
+                future.set_exception(error)
         self._futures.clear()

@@ -73,3 +73,12 @@ async def test_len_counts_pending_requests() -> None:
     pending.register(2)
 
     assert len(pending) == 2
+
+
+async def test_flush_ignores_cancelled_request() -> None:
+    pending = PendingRequests()
+    pending.register(1).cancel()
+
+    pending.flush(RuntimeError())
+
+    assert 1 not in pending
