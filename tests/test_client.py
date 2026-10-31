@@ -1,7 +1,21 @@
+import asyncio
+from contextlib import suppress
+
+import httpx
 import pytest
 
+from tests.conftest import (
+    AUTHORIZATION,
+    FakeAuthorizationProvider,
+    FakeConnectionFactory,
+    FakeSleep,
+    FakeWebsocket,
+    ScriptExhaustedError,
+)
 from tydomio.client import (
     AsyncTydomClient,
+    OnConnectionRoutine,
+    OnDisconnectionRoutine,
     TydomRequestHandler,
     parse_message,
     parse_request,
@@ -35,6 +49,46 @@ def make_client(*handlers: TydomRequestHandler) -> AsyncTydomClient:
         tydom_mac="000000000000",
         tydom_request_handlers=handlers,
     )
+
+
+def make_client_with_doubles(
+    connection_factory: FakeConnectionFactory,
+    *,
+    authorization_provider: FakeAuthorizationProvider | None = None,
+    sleep: FakeSleep | None = None,
+    on_connection: tuple[OnConnectionRoutine, ...] = (),
+    on_disconnection: tuple[OnDisconnectionRoutine, ...] = (),
+) -> AsyncTydomClient:
+    return AsyncTydomClient(
+        tydom_password="",
+        tydom_ip="192.0.2.1",
+        tydom_mac="000000000000",
+        on_connection_routines=on_connection,
+        on_disconnection_routines=on_disconnection,
+        authorization_provider=authorization_provider or FakeAuthorizationProvider(),
+        connection_factory=connection_factory,
+        sleep=sleep or FakeSleep(),
+    )
+
+
+async def run_until_script_ends(client: AsyncTydomClient) -> None:
+    with suppress(ScriptExhaustedError):
+        await client.run_websocket()
+
+
+async def run_then_cancel(client: AsyncTydomClient, reached: asyncio.Event) -> None:
+    run = asyncio.create_task(cancellable_run(client))
+    wait_reached = asyncio.create_task(reached.wait())
+    await asyncio.wait((run, wait_reached), return_when=asyncio.FIRST_COMPLETED)
+    wait_reached.cancel()
+    run.cancel()
+    await run
+
+
+async def cancellable_run(client: AsyncTydomClient) -> None:
+    # how the loop ends on cancellation is not what these tests assert
+    with suppress(asyncio.CancelledError):
+        await client.run_websocket()
 
 
 def test_parse_response_reads_status() -> None:
@@ -161,3 +215,80 @@ async def test_send_rejects_request_without_transaction_id() -> None:
 async def test_send_requires_connection() -> None:
     with pytest.raises(RuntimeError):
         await make_client().send(PingRequest())
+
+
+@pytest.mark.parametrize(
+    "error", [httpx.ConnectError("unreachable"), httpx.ConnectTimeout("timeout")]
+)
+async def test_run_websocket_retries_authorization_after_a_pause_when_unreachable(
+    error: Exception,
+) -> None:
+    authorization_provider = FakeAuthorizationProvider(error)
+    sleep = FakeSleep()
+    client = make_client_with_doubles(
+        FakeConnectionFactory(),
+        authorization_provider=authorization_provider,
+        sleep=sleep,
+    )
+
+    await run_until_script_ends(client)
+
+    assert (sleep.delays, authorization_provider.calls) == ([5], 2)
+
+
+async def test_run_websocket_connects_with_the_authorization() -> None:
+    connection_factory = FakeConnectionFactory()
+
+    await run_until_script_ends(make_client_with_doubles(connection_factory))
+
+    assert connection_factory.authorizations == [AUTHORIZATION]
+
+
+async def test_run_websocket_gives_the_client_to_connection_routines() -> None:
+    received: list[AsyncTydomClient] = []
+    routine_ran = asyncio.Event()
+
+    async def routine(client: AsyncTydomClient) -> None:
+        received.append(client)
+        routine_ran.set()
+
+    client = make_client_with_doubles(
+        FakeConnectionFactory(FakeWebsocket()), on_connection=(routine,)
+    )
+
+    await run_then_cancel(client, routine_ran)
+
+    assert received == [client]
+
+
+async def test_run_websocket_does_not_reconnect_when_cancelled() -> None:
+    connection_factory = FakeConnectionFactory(FakeWebsocket(), FakeWebsocket())
+    client = make_client_with_doubles(connection_factory)
+
+    await run_then_cancel(client, connection_factory.connected)
+
+    assert len(connection_factory.authorizations) == 1
+
+
+async def test_run_websocket_runs_disconnection_routines_when_cancelled() -> None:
+    connection_factory = FakeConnectionFactory(FakeWebsocket())
+    disconnections: list[None] = []
+
+    async def routine() -> None:
+        disconnections.append(None)
+
+    client = make_client_with_doubles(connection_factory, on_disconnection=(routine,))
+
+    await run_then_cancel(client, connection_factory.connected)
+
+    assert len(disconnections) == 1
+
+
+async def test_run_websocket_closes_the_connection_when_cancelled() -> None:
+    websocket = FakeWebsocket()
+    connection_factory = FakeConnectionFactory(websocket)
+    client = make_client_with_doubles(connection_factory)
+
+    await run_then_cancel(client, connection_factory.connected)
+
+    assert websocket.closed

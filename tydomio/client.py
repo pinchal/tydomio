@@ -1,16 +1,17 @@
 """Client implementation."""
 
 import asyncio.exceptions
+import functools
 import logging
 import re
-import ssl
-from collections.abc import Callable, Coroutine
-from typing import Any, TypeVar, get_type_hints
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
+from contextlib import AbstractAsyncContextManager
+from typing import Any, Protocol, TypeVar, get_type_hints
 
 import httpx
-from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
+from . import network
 from .error import CommunicationError, InvalidRequest, TydomIoError
 from .requests import (
     ClientRequest,
@@ -34,6 +35,24 @@ OnDisconnectionRoutine = Callable[[], Coroutine[Any, Any, None]]
 TydomRequestHandler = Callable[[TydomRequestT], Coroutine[Any, Any, None]]
 
 
+class WebsocketConnection(Protocol):
+    """What the client uses of a websocket connection."""
+
+    async def send(self, message: bytes, /) -> None:
+        """Send a binary message."""
+
+    def __aiter__(self) -> AsyncIterator[str | bytes]:
+        """Iterate over the received messages until the connection closes."""
+
+    async def close(self) -> None:
+        """Close the connection."""
+
+
+AuthorizationProvider = Callable[[], Awaitable[str]]
+ConnectionFactory = Callable[[str], AbstractAsyncContextManager[WebsocketConnection]]
+Sleep = Callable[[float], Awaitable[None]]
+
+
 class AsyncTydomClient:
     """Asynchronous client for Tydom.
 
@@ -55,6 +74,9 @@ class AsyncTydomClient:
         on_connection_routines: tuple[OnConnectionRoutine, ...] = (),
         on_disconnection_routines: tuple[OnDisconnectionRoutine, ...] = (),
         tydom_request_handlers: tuple[TydomRequestHandler[TydomRequestT], ...] = (),
+        authorization_provider: AuthorizationProvider | None = None,
+        connection_factory: ConnectionFactory | None = None,
+        sleep: Sleep = asyncio.sleep,
     ):
         """AsyncTydomClient constructor.
 
@@ -63,6 +85,11 @@ class AsyncTydomClient:
         :param tydom_ip: The local access to your Tydom (optional)
         :param tydom_mac: The mac address of your Tydom
         :param deltadore_remote: hostname for remote access, used when no ip is provided
+        :param authorization_provider: gets the authorization header, from the Tydom
+        by default
+        :param connection_factory: opens the websocket with an authorization, on the
+        Tydom by default
+        :param sleep: waits between reconnections and pings, asyncio.sleep by default
         """
         self._tydom_password = tydom_password
         self._tydom_ip = tydom_ip
@@ -71,12 +98,30 @@ class AsyncTydomClient:
         self._local_access = self._tydom_ip is not None
         self._tydom_target = tydom_ip if self._local_access else deltadore_remote
         self._cmd_prefix = b"" if self._local_access else b"\x02"
-        # the Tydom serves a self-signed certificate
-        self._ssl_context = ssl._create_unverified_context()  # noqa: S323
-        if self._local_access:
-            self._ssl_context.options |= 0x4
+        self._ssl_context = network.tydom_ssl_context(local_access=self._local_access)
+        self._authorization_provider: AuthorizationProvider = (
+            authorization_provider
+            or functools.partial(
+                network.get_authorization,
+                url=f"https://{self._tydom_target}/mediation/client?mac={self._tydom_mac}",
+                username=self._tydom_mac,
+                password=self._tydom_password,
+                ssl_context=self._ssl_context,
+            )
+        )
+        self._connection_factory: ConnectionFactory = (
+            connection_factory
+            or functools.partial(
+                network.connect_websocket,
+                uri=f"wss://{self._tydom_target}:443"
+                f"/mediation/client?mac={self._tydom_mac}&appli=1",
+                ssl_context=self._ssl_context,
+                close_timeout=default_timeout,
+            )
+        )
+        self._sleep = sleep
 
-        self._websocket: ClientConnection | None = None
+        self._websocket: WebsocketConnection | None = None
         self._requests_in_progress: dict[int, asyncio.Future[Response]] = {}
         self._connexion_st_cond = asyncio.Condition()
 
@@ -120,27 +165,7 @@ class AsyncTydomClient:
             self._tydom_mac,
             self._tydom_target,
         )
-
-        auth = httpx.DigestAuth(username=self._tydom_mac, password=self._tydom_password)
-
-        async with httpx.AsyncClient(verify=self._ssl_context) as client:
-            # build the get request on the endpoint
-            request = client.build_request(
-                method="GET",
-                url=f"https://{self._tydom_target}/mediation/client?mac={self._tydom_mac}",
-            )
-
-            # initiate auth flow
-            auth_flow = auth.auth_flow(request)
-
-            # send the first request to get the challenge
-            response = await client.send(next(auth_flow))
-            # forward the rejected response to the auth flow to parse the challenge
-            request = auth_flow.send(response)
-
-            # do not perform the authentication at this point,
-            # instead, keep the authorization for the websocket and drop the connection
-            return request.headers["authorization"]
+        return await self._authorization_provider()
 
     async def run_websocket(self) -> None:
         """Authenticate initiate the connection on the Tydom websocket."""
@@ -155,19 +180,12 @@ class AsyncTydomClient:
             except httpx.ConnectError, httpx.ConnectTimeout:
                 # wait and retry
                 CLIENT_LOGGER.warning("Unable to reach %s", self._tydom_target)
-                await asyncio.sleep(wait_between_retry)
+                await self._sleep(wait_between_retry)
                 continue
 
             try:
                 # open websocket
-                async with connect(
-                    uri=f"wss://{self._tydom_target}:443"
-                    f"/mediation/client?mac={self._tydom_mac}&appli=1",
-                    additional_headers={"Authorization": authorization},
-                    ssl=self._ssl_context,
-                    ping_interval=None,  # the tydom does not answer to ping
-                    close_timeout=self._default_timeout,
-                ) as self._websocket:
+                async with self._connection_factory(authorization) as self._websocket:
                     CLIENT_LOGGER.info("Connected to tydom")
 
                     async with asyncio.TaskGroup() as task_group:
@@ -256,7 +274,7 @@ class AsyncTydomClient:
         """
         while True:
             await self.send(PingRequest())
-            await asyncio.sleep(self._ping_interval)
+            await self._sleep(self._ping_interval)
 
     async def _flush_request_in_progress(self) -> None:
         """Asynchronously flushes all pending requests in progress.

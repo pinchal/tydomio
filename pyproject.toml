@@ -43,6 +43,8 @@ filterwarnings = ["error"]
 [tool.coverage.run]
 branch = true
 source = ["tydomio"]
+# thin adapters to the real network, the only code tests never run
+omit = ["tydomio/network.py"]
 
 [tool.coverage.report]
 show_missing = true
