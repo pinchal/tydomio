@@ -3,7 +3,6 @@
 import asyncio.exceptions
 import functools
 import logging
-import re
 from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
 from contextlib import AbstractAsyncContextManager, AsyncExitStack
 from typing import Any, Protocol, TypeVar, get_type_hints
@@ -12,17 +11,10 @@ import httpx
 from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidStatus
 
 from . import network
-from .error import CommunicationError, InvalidRequest, TydomIoError
+from .error import CommunicationError, InvalidRequest, InvalidResponse, TydomIoError
 from .pending_requests import PendingRequests
-from .requests import (
-    ClientRequest,
-    JsonRequest,
-    PingRequest,
-    Request,
-    TydomPutAreasDataRequest,
-    TydomPutDevicesDataRequest,
-    TydomRequest,
-)
+from .protocol import parse_message
+from .requests import ClientRequest, PingRequest, TydomRequest
 from .response import Response, ResponseT
 
 CLIENT_LOGGER = logging.getLogger("tydomio.client")
@@ -256,7 +248,14 @@ class AsyncTydomClient:
             async for message in self._websocket:
                 if not isinstance(message, bytes):
                     raise CommunicationError("Unexpected text message from Tydom")
-                parsed_msg = parse_message(message, self._cmd_prefix)
+                try:
+                    parsed_msg = parse_message(message, self._cmd_prefix)
+                except (InvalidRequest, InvalidResponse) as error:
+                    CLIENT_LOGGER.warning(
+                        "Rejected a malformed message: %s", type(error).__name__
+                    )
+                    CLIENT_LOGGER.debug("Malformed message %r", message, exc_info=True)
+                    continue
 
                 if isinstance(parsed_msg, TydomRequest):
                     for handler in self._on_tydom_request_routines.get(
@@ -271,8 +270,8 @@ class AsyncTydomClient:
                         CLIENT_LOGGER.warning(
                             "Got an unexpected response %s", parsed_msg.status
                         )
-                        CLIENT_LOGGER.warning("Headers %s", parsed_msg.headers)
-                        CLIENT_LOGGER.warning("Content %s", parsed_msg.content)
+                        CLIENT_LOGGER.debug("Headers %s", parsed_msg.headers)
+                        CLIENT_LOGGER.debug("Content %s", parsed_msg.content)
 
         except ConnectionClosed as error:
             raise CommunicationError("Connection closed") from error
@@ -383,88 +382,3 @@ async def _log_handler_error(handling: Coroutine[Any, Any, None]) -> None:
         await handling
     except RuntimeError:
         CLIENT_LOGGER.exception("Error in request handler")
-
-
-def parse_message(message: bytes, cmd_prefix: bytes) -> Response | Request:
-    """Parse messages received from the websocket into Request or Response."""
-    is_response = message.startswith(cmd_prefix + b"HTTP/1.1 ")
-
-    if is_response:
-        return parse_response(message)
-
-    return parse_request(message)
-
-
-def parse_response(message: bytes) -> Response:
-    """Parse messages received from the websocket into Response."""
-    body_position = message.find(b"\r\n\r\n")
-    header_parts = message[:body_position].split(b"\r\n")
-    status = int(header_parts[0].split(b" ")[1])
-    headers = {}
-    for keyval in header_parts[1:]:
-        key, val = keyval.decode("ascii").split(":")
-        headers[key.strip().lower()] = val.strip().lower()
-
-    # extract the content, if any
-    content: bytes | None = message[body_position + 4 :]
-    if not content:
-        content = None
-
-    return Response(
-        status=status,
-        headers=headers,
-        content=content,
-    )
-
-
-def parse_request(message: bytes) -> Request:
-    """Parse messages received from the websocket into Request."""
-    body_position = message.find(b"\r\n\r\n")
-    header_parts = message[:body_position].split(b"\r\n")
-    method_url = header_parts[0].decode("ascii").split(" ")
-    first_line_expected_size = 3
-    if len(method_url) != first_line_expected_size or method_url[2] != "HTTP/1.1":
-        raise InvalidRequest("Invalid request line")
-    method = method_url[0]
-    url = method_url[1]
-    headers = {}
-    for keyval in header_parts[1:]:
-        key, val = keyval.decode("ascii").split(":")
-        headers[key.strip().lower()] = val.strip().lower()
-
-    raw_content = message[body_position + 4 :]
-    # there are some hexa numbers in between the content, between new lines
-    # I don't know what they are, but they are not useful
-    cleaned_content: bytes | None = re.sub(
-        b"(\r\n)?[0-9a-fA-F]{0,2}\r\n", b"", raw_content
-    )
-    if not cleaned_content:
-        cleaned_content = None
-
-    if method == "PUT":
-        try:
-            match url:
-                case "/devices/data":
-                    return TydomPutDevicesDataRequest(
-                        method=method,
-                        url=url,
-                        headers=headers,
-                        content=cleaned_content,
-                    )
-                case "/areas/data":
-                    return TydomPutAreasDataRequest(
-                        method=method,
-                        url=url,
-                        headers=headers,
-                        content=cleaned_content,
-                    )
-
-        except InvalidRequest:
-            logging.exception("Failed to create TydomPutDataRequest")
-
-    return JsonRequest(
-        method=method,
-        url=url,
-        headers=headers,
-        content=cleaned_content,
-    )

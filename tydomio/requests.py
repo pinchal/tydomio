@@ -13,7 +13,7 @@ import pydantic
 from .error import InvalidRequest
 from .globals import DEV_MODE
 from .model.data import AreasData, DevicesData
-from .response import ConfigResponse, Ok, Response
+from .response import ConfigResponse, Ok, Response, has_json_content
 
 _MODULE_DIRECTORY_PATH = Path(__file__).parent.resolve()
 
@@ -48,15 +48,18 @@ class Request:
 
     def _make_headers(self) -> dict[str, str]:
         auto_headers: dict[str, str] = {}
+        given_headers = {name.lower() for name in self.headers}
 
         has_content_length = (
-            "Content-Length" in self.headers or "Transfer-Encoding" in self.headers
+            "content-length" in given_headers or "transfer-encoding" in given_headers
         )
 
-        has_transac_id = "Transac-Id" in self.headers
+        has_transac_id = "transac-id" in given_headers
 
-        if not has_content_length and self.method in ("POST", "PUT", "PATCH"):
-            auto_headers["content-length"] = "0"
+        if not has_content_length and (
+            self.content is not None or self.method in ("POST", "PUT", "PATCH")
+        ):
+            auto_headers["content-length"] = str(len(self.content or b""))
 
         if not has_transac_id:
             auto_headers["transac-id"] = str(self.transaction_id)
@@ -65,13 +68,17 @@ class Request:
 
     def to_bytes(self, cmd_prefix: bytes) -> bytes:
         """Format this request to an array of bytes to send on the websocket."""
-        return cmd_prefix + (
-            f"{self.method} {self.url} HTTP/1.1\r\n"
-            + "\r\n".join(
-                (f"{key}: {value}" for key, value in self._make_headers().items())
-            )
-            + "\r\n\r\n"
-        ).encode("ascii")
+        return (
+            cmd_prefix
+            + (
+                f"{self.method} {self.url} HTTP/1.1\r\n"
+                + "\r\n".join(
+                    (f"{key}: {value}" for key, value in self._make_headers().items())
+                )
+                + "\r\n\r\n"
+            ).encode("ascii")
+            + (self.content or b"")
+        )
 
 
 class JsonRequest(Request):
@@ -96,7 +103,7 @@ class JsonRequest(Request):
             transaction_id=None,
         )
 
-        if self.headers.get("content-type") != "application/json":
+        if not has_json_content(self.headers):
             raise InvalidRequest("Invalid content type")
 
         try:

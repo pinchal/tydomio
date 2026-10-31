@@ -59,6 +59,38 @@ def test_to_bytes_adds_no_content_length_with_transfer_encoding() -> None:
     assert not any(line.lower().startswith(b"content-length") for line in lines)
 
 
+def test_to_bytes_keeps_given_content_length_whatever_its_case() -> None:
+    request = Request(method="POST", url="/a", headers={"content-length": "5"})
+
+    lines = header_lines(request.to_bytes(cmd_prefix=b""))
+
+    assert [line for line in lines if line.lower().startswith(b"content-length")] == [
+        b"content-length: 5"
+    ]
+
+
+def test_to_bytes_adds_no_content_length_with_transfer_encoding_whatever_its_case() -> (
+    None
+):
+    request = Request(method="POST", url="/a", headers={"transfer-encoding": "chunked"})
+
+    lines = header_lines(request.to_bytes(cmd_prefix=b""))
+
+    assert not any(line.lower().startswith(b"content-length") for line in lines)
+
+
+def test_to_bytes_writes_content_after_headers() -> None:
+    raw = Request(method="PUT", url="/a", content=b"{}").to_bytes(cmd_prefix=b"")
+
+    assert raw.endswith(b"\r\n\r\n{}")
+
+
+def test_to_bytes_sets_content_length_to_content_size_in_bytes() -> None:
+    raw = Request(method="PUT", url="/a", content="é".encode()).to_bytes(cmd_prefix=b"")
+
+    assert b"content-length: 2" in header_lines(raw)
+
+
 def test_to_bytes_adds_transaction_id() -> None:
     request = Request(method="GET", url="/a")
 
@@ -74,6 +106,16 @@ def test_to_bytes_keeps_given_transac_id() -> None:
 
     assert [line for line in lines if line.lower().startswith(b"transac-id")] == [
         b"Transac-Id: 7"
+    ]
+
+
+def test_to_bytes_keeps_given_transac_id_whatever_its_case() -> None:
+    request = Request(method="GET", url="/a", headers={"transac-id": "7"})
+
+    lines = header_lines(request.to_bytes(cmd_prefix=b""))
+
+    assert [line for line in lines if line.lower().startswith(b"transac-id")] == [
+        b"transac-id: 7"
     ]
 
 
@@ -121,6 +163,14 @@ def test_json_request_has_no_transaction_id() -> None:
     request = JsonRequest("PUT", "/a", JSON_HEADERS, b"{}")
 
     assert request.transaction_id is None
+
+
+def test_json_request_accepts_json_media_type_with_parameters() -> None:
+    headers = {"content-type": "Application/JSON; charset=UTF-8"}
+
+    request = JsonRequest("PUT", "/a", headers, b'{"key": "value"}')
+
+    assert request.json_content == {"key": "value"}
 
 
 def test_json_request_rejects_other_content_type() -> None:

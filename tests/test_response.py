@@ -98,6 +98,14 @@ def test_json_response_accepts_listed_status() -> None:
     assert response.status == 201
 
 
+def test_json_response_accepts_json_media_type_with_parameters() -> None:
+    headers = {"content-type": "Application/JSON; charset=UTF-8"}
+
+    response = JsonResponse(Response(status=200, headers=headers, content=b"{}"))
+
+    assert response.json_content == {}
+
+
 def test_json_response_rejects_other_content_type() -> None:
     with pytest.raises(InvalidResponse):
         JsonResponse(

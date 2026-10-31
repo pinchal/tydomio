@@ -183,10 +183,11 @@ Current state, kept up to date with each change.
 
 | Module | Responsibility | May depend on |
 |---|---|---|
-| `tydomio/client.py` | `AsyncTydomClient`: websocket loop over an injected authorization provider, connection factory and sleep, ping, sending requests, routing pushed requests to handlers, message parsing | `network` (defaults), `pending_requests`, `requests`, `response`, `error`, httpx and websockets (exception types only) |
+| `tydomio/client.py` | `AsyncTydomClient`: websocket loop over an injected authorization provider, connection factory and sleep, ping, sending requests, routing pushed requests to handlers | `network` (defaults), `pending_requests`, `protocol`, `requests`, `response`, `error`, httpx and websockets (exception types only) |
+| `tydomio/protocol.py` | Conversion of the bytes received on the websocket into messages: prefix, start line, headers, chunked content | `requests`, `response`, `error` |
 | `tydomio/pending_requests.py` | `PendingRequests`: futures of the requests waiting for a response, matched by transaction id | `response` |
 | `tydomio/network.py` | Thin adapters to the real network: TLS context, digest authorization (httpx), websocket connection (websockets); excluded from coverage | httpx, websockets |
-| `tydomio/requests.py` | Requests sent by the client and requests pushed by the Tydom | `response`, `model`, `error`, `globals` |
+| `tydomio/requests.py` | Requests sent by the client, with their serialization to bytes, and requests pushed by the Tydom | `response`, `model`, `error`, `globals` |
 | `tydomio/response.py` | Responses from the Tydom, parsed by type | `model`, `error` |
 | `tydomio/model/config.py` | pydantic model of `/configs/file` | pydantic |
 | `tydomio/model/data.py` | pydantic model of `/devices/data` and `/areas/data` | pydantic |
