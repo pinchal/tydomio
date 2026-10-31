@@ -183,7 +183,8 @@ Current state, kept up to date with each change.
 
 | Module | Responsibility | May depend on |
 |---|---|---|
-| `tydomio/client.py` | `AsyncTydomClient`: authentication, websocket loop, ping, request/response matching, message parsing | `requests`, `response`, `error`, httpx, websockets |
+| `tydomio/client.py` | `AsyncTydomClient`: websocket loop over an injected authorization provider, connection factory and sleep, ping, request/response matching, message parsing | `network` (defaults), `requests`, `response`, `error`, httpx and websockets (exception types only) |
+| `tydomio/network.py` | Thin adapters to the real network: TLS context, digest authorization (httpx), websocket connection (websockets); excluded from coverage | httpx, websockets |
 | `tydomio/requests.py` | Requests sent by the client and requests pushed by the Tydom | `response`, `model`, `error`, `globals` |
 | `tydomio/response.py` | Responses from the Tydom, parsed by type | `model`, `error` |
 | `tydomio/model/config.py` | pydantic model of `/configs/file` | pydantic |
