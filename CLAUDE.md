@@ -192,4 +192,4 @@ Current state, kept up to date with each change.
 | `tydomio/model/data.py` | pydantic model of `/devices/data` and `/areas/data` | pydantic |
 | `tydomio/error.py` | Exception hierarchy (`TydomIoError`) | — |
 | `tydomio/globals.py` | `DEV_MODE` flag from the environment | — |
-| `tydomio/cli.py` | Debug CLI | `client`, `requests` |
+| `tydomio/cli.py` | Temporary debug CLI to try the library on a real Tydom; not to be extended, the real CLI will be designed later | `client`, `requests` |
