@@ -8,11 +8,12 @@ from websockets.asyncio.client import ClientConnection, connect
 
 
 def tydom_ssl_context(*, local_access: bool) -> ssl.SSLContext:
-    """Build the TLS context the Tydom requires."""
+    """Build the TLS context the Tydom requires, verified for remote access."""
+    if not local_access:
+        return ssl.create_default_context()
     # the Tydom serves a self-signed certificate, hence the private unverified context
     context = ssl._create_unverified_context()  # noqa: S323  # pylint: disable=protected-access
-    if local_access:
-        context.options |= 0x4
+    context.options |= 0x4
     return context
 
 

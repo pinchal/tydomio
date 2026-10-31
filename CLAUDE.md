@@ -130,9 +130,10 @@ excess.
 - **Safe defaults.** An error stops the action rather than going on with bad data. No
   debug mode on by default. No home-made cryptography: authentication uses httpx's
   digest implementation.
-- **TLS.** The Tydom needs an unverified TLS context with legacy renegotiation. This
-  exception stays confined to the transport code; do not extend it to other connections
-  and do not change it without asking.
+- **TLS.** In local access only, the Tydom needs an unverified TLS context with legacy
+  renegotiation; remote access through `mediation.tydom.com` verifies the certificate
+  and the hostname. This exception stays confined to the transport code; do not extend
+  it to other connections and do not change it without asking.
 - **Dependencies.** Few, from PyPI, maintained and widely used, locked in `uv.lock`. No
   code copied from an unknown source; protocol knowledge taken from other projects
   (tydom2mqtt) is credited in a comment. A known vulnerability that an update fixes is
