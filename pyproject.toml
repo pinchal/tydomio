@@ -24,6 +24,8 @@ dev = [
   "datamodel-code-generator>=0.87",
   "pre-commit>=4.7",
   "pylint>=4.1",
+  "pytest>=9.2.0",
+  "pytest-asyncio>=1.4.1",
 ]
 
 [tool.uv]
@@ -31,6 +33,19 @@ package = true
 
 [project.scripts]
 tydomio-cli = "tydomio.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["tydomio"]
+
+[tool.coverage.report]
+show_missing = true
 
 [tool.ruff]
 line-length = 88
@@ -58,6 +73,14 @@ ignore = [
     "D203", # `one-blank-line-before-class` (D203) and `no-blank-line-before-class` (D211) are incompatible
     "D213", # `multi-line-summary-first-line` (D212) and `multi-line-summary-second-line` (D213) are incompatible
     "PLR0913", # nope, I don't realy have too many arguments in my constructor
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "S101", # pytest asserts with `assert`
+    "D100", # a test module is described by its name
+    "D103", # a test is described by its name
+    "PLR2004", # expected values are the test data, a constant would only rename them
 ]
 
 [tool.pylint.main]
