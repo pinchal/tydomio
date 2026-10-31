@@ -73,8 +73,8 @@ Make the simplest change that fully solves the task.
   or deleted test, no re-baselined reference, no lint, type or security suppression
   (`noqa`, `type: ignore`, `pylint: disable`) without a one-line reason the user
   accepts, no `--no-verify`.
-- **Static analysis and types.** ruff (with its security rules), the formatter and
-  `mypy --strict` run in pre-commit and in the CI. Type everything; `Any` only when
+- **Static analysis and types.** ruff (with its security rules), the formatter, pylint
+  (only the checks ruff does not cover) and ty run in pre-commit and in the CI. Type everything; `Any` only when
   unavoidable, at the boundary with untyped libraries.
 
 ## Tests

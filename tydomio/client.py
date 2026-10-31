@@ -11,7 +11,7 @@ import httpx
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
-from .error import CommunicationError, InvalidRequest
+from .error import CommunicationError, InvalidRequest, TydomIoError
 from .requests import (
     ClientRequest,
     JsonRequest,
@@ -71,7 +71,8 @@ class AsyncTydomClient:
         self._local_access = self._tydom_ip is not None
         self._tydom_target = tydom_ip if self._local_access else deltadore_remote
         self._cmd_prefix = b"" if self._local_access else b"\x02"
-        self._ssl_context = ssl._create_unverified_context()
+        # the Tydom serves a self-signed certificate
+        self._ssl_context = ssl._create_unverified_context()  # noqa: S323
         if self._local_access:
             self._ssl_context.options |= 0x4
 
@@ -88,7 +89,15 @@ class AsyncTydomClient:
         def _get_handler_request_type(
             handler: TydomRequestHandler[TydomRequestT],
         ) -> type[TydomRequest]:
-            return next(iter(get_type_hints(handler).values()))  # type: ignore
+            request_type = next(iter(get_type_hints(handler).values()))
+            if not (
+                isinstance(request_type, type)
+                and issubclass(request_type, TydomRequest)
+            ):
+                raise TydomIoError(
+                    f"Handler {handler!r} must take a TydomRequest subclass"
+                )
+            return request_type
 
         type_of_requests_handled = {
             _get_handler_request_type(handler) for handler in tydom_request_handlers
@@ -131,9 +140,7 @@ class AsyncTydomClient:
 
             # do not perform the authentication at this point,
             # instead, keep the authorization for the websocket and drop the connection
-            authorization = request.headers["authorization"]
-            assert isinstance(authorization, str)
-            return authorization
+            return request.headers["authorization"]
 
     async def run_websocket(self) -> None:
         """Authenticate initiate the connection on the Tydom websocket."""
@@ -199,13 +206,13 @@ class AsyncTydomClient:
                 return
 
     async def _read_messages(self) -> None:
-        assert self._websocket is not None
+        if self._websocket is None:
+            raise RuntimeError("Not connected")
 
         try:
             async for message in self._websocket:
-                assert isinstance(message, bytes), (
-                    "This implementation expects bytes messages from websocket"
-                )
+                if not isinstance(message, bytes):
+                    raise CommunicationError("Unexpected text message from Tydom")
                 parsed_msg = parse_message(message, self._cmd_prefix)
 
                 if isinstance(parsed_msg, TydomRequest):
@@ -307,10 +314,11 @@ class AsyncTydomClient:
         if timeout is None:
             timeout = self._default_timeout
 
-        assert (
-            request.transaction_id
-            and request.transaction_id not in self._requests_in_progress
-        )
+        if (
+            request.transaction_id is None
+            or request.transaction_id in self._requests_in_progress
+        ):
+            raise TydomIoError("The request needs a unique transaction id")
 
         if self._websocket is None:
             raise RuntimeError("Not connected")
@@ -386,7 +394,8 @@ def parse_request(message: bytes) -> Request:
     header_parts = message[:body_position].split(b"\r\n")
     method_url = header_parts[0].decode("ascii").split(" ")
     first_line_expected_size = 3
-    assert len(method_url) == first_line_expected_size and method_url[2] == "HTTP/1.1"
+    if len(method_url) != first_line_expected_size or method_url[2] != "HTTP/1.1":
+        raise InvalidRequest("Invalid request line")
     method = method_url[0]
     url = method_url[1]
     headers = {}
@@ -397,7 +406,11 @@ def parse_request(message: bytes) -> Request:
     raw_content = message[body_position + 4 :]
     # there are some hexa numbers in between the content, between new lines
     # I don't know what they are, but they are not useful
-    cleaned_content = re.sub(b"(\r\n)?[0-9a-fA-F]{0,2}\r\n", b"", raw_content)
+    cleaned_content: bytes | None = re.sub(
+        b"(\r\n)?[0-9a-fA-F]{0,2}\r\n", b"", raw_content
+    )
+    if not cleaned_content:
+        cleaned_content = None
 
     if method == "PUT":
         try:

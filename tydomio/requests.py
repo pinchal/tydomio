@@ -2,7 +2,7 @@
 
 import itertools
 import json
-import random
+import secrets
 from abc import ABC
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,7 +17,7 @@ from .response import ConfigResponse, Ok, Response
 
 _MODULE_DIRECTORY_PATH = Path(__file__).parent.resolve()
 
-TRANSACTION_COUNTER = itertools.count(random.randint(1, 100000000))
+TRANSACTION_COUNTER = itertools.count(secrets.randbelow(100000000) + 1)
 
 
 class _ResponseInitProtocol(Protocol):
@@ -100,7 +100,9 @@ class JsonRequest(Request):
             raise InvalidRequest("Invalid content type")
 
         try:
-            self.json_content = json.loads(self.content) if self.content else None
+            self.json_content = (
+                json.loads(self.content) if self.content is not None else None
+            )
         except json.JSONDecodeError as error:
             raise InvalidRequest(self.content) from error
 

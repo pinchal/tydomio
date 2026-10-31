@@ -1,8 +1,6 @@
 """Requests for the Tydom API."""
 
-import itertools
 import json
-import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, TypeVar
@@ -10,13 +8,11 @@ from typing import Protocol, TypeVar
 import pydantic
 
 from .error import InvalidResponse
+from .globals import DEV_MODE
 from .model import config as config_mdl
 
 _STATUS_CODE_OK = 200
 _MODULE_DIRECTORY_PATH = Path(__file__).parent.resolve()
-
-DEV_MODE = False
-TRANSACTION_COUNTER = itertools.count(random.randint(1, 100000000))
 
 
 class _ResponseInitProtocol(Protocol):
@@ -74,7 +70,7 @@ class JsonResponse(Response):
 
         try:
             self.json_content = (
-                json.loads(response.content) if response.content else None
+                json.loads(response.content) if response.content is not None else None
             )
         except json.JSONDecodeError as error:
             raise InvalidResponse(response) from error
