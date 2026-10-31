@@ -13,6 +13,7 @@ from tests.conftest import (
     FakeSleep,
     FakeWebsocket,
     ScriptExhaustedError,
+    put,
 )
 from tydomio.client import (
     AsyncTydomClient,
@@ -36,13 +37,6 @@ from tydomio.response import Ok, Response
 
 DEVICES_DATA = b'[{"id": 1, "endpoints": []}]'
 AREAS_DATA = b'[{"id": 1, "error": 0, "data": []}]'
-
-
-def put(url: str, content: bytes) -> bytes:
-    return (
-        f"PUT {url} HTTP/1.1\r\ncontent-type: application/json\r\n\r\n".encode()
-        + content
-    )
 
 
 def make_client(*handlers: TydomRequestHandler) -> AsyncTydomClient:

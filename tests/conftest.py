@@ -6,6 +6,14 @@ from contextlib import asynccontextmanager
 
 AUTHORIZATION = "Digest test"
 
+# synthetic /configs/file payload, every list left empty
+CONFIG_CONTENT = (
+    b'{"date": 1, "version_application": "1.0", "endpoints": [],'
+    b' "old_tycam": false, "moments": [], "os": "tydom", "groups": [],'
+    b' "areas": [], "scenarios": [], "id_catalog": "catalog",'
+    b' "version": "2.0", "zigbee_networks": []}'
+)
+
 
 class ScriptExhaustedError(Exception):
     """Raised by a double asked for more than its script holds."""
@@ -94,3 +102,20 @@ class FakeSleep:
         """Record the delay."""
         self.delays.append(delay)
         self.called.set()
+
+
+def tydom_reply(sent: bytes) -> bytes:
+    """Answer as the Tydom: the config to GET /configs/file, an empty 200 otherwise."""
+    transac_id = sent.split(b"transac-id: ")[1].split(b"\r\n")[0]
+    headers = b"HTTP/1.1 200 OK\r\ntransac-id: " + transac_id + b"\r\n"
+    if not sent.startswith(b"GET /configs/file "):
+        return headers + b"\r\n"
+    return headers + b"uri-origin: /configs/file\r\n\r\n" + CONFIG_CONTENT
+
+
+def put(url: str, content: bytes) -> bytes:
+    """Build a JSON PUT pushed by the Tydom."""
+    return (
+        f"PUT {url} HTTP/1.1\r\ncontent-type: application/json\r\n\r\n".encode()
+        + content
+    )

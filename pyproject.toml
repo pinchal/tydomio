@@ -48,6 +48,7 @@ omit = ["tydomio/network.py"]
 
 [tool.coverage.report]
 show_missing = true
+fail_under = 85
 
 [tool.ruff]
 line-length = 88

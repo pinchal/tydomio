@@ -5,9 +5,10 @@ import asyncio
 import logging
 import os
 import sys
+from collections.abc import Sequence
 from pprint import pformat
 
-from tydomio.client import AsyncTydomClient
+from tydomio.client import AsyncTydomClient, AuthorizationProvider, ConnectionFactory
 from tydomio.requests import (
     GetConfigFile,
     RefreshAll,
@@ -16,11 +17,21 @@ from tydomio.requests import (
 )
 
 
-def main() -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    authorization_provider: AuthorizationProvider | None = None,
+    connection_factory: ConnectionFactory | None = None,
+) -> int:
     """Entry point for the CLI application.
 
     This function parses command-line arguments, configures logging, and
     executes the specified action.
+
+    Args:
+        argv: the command-line arguments, sys.argv[1:] by default
+        authorization_provider: given to the client, the Tydom by default
+        connection_factory: given to the client, the Tydom by default
 
     Returns:
         int: Exit code of the application. Returns 0 on successful execution.
@@ -78,7 +89,7 @@ def main() -> int:
         help="The Tydom MAC address, only required on remote access",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
@@ -89,7 +100,7 @@ def main() -> int:
         os.environ["PYTHONASYNCIODEBUG"] = "1"
 
     if args.action == "run":
-        return _do_run(args)
+        return _do_run(args, authorization_provider, connection_factory)
 
     return 0
 
@@ -114,7 +125,11 @@ async def _handle_put_areas_data(put_areas: TydomPutAreasDataRequest) -> None:
     logging.info(put_areas.data)
 
 
-def _do_run(args: argparse.Namespace) -> int:
+def _do_run(
+    args: argparse.Namespace,
+    authorization_provider: AuthorizationProvider | None,
+    connection_factory: ConnectionFactory | None,
+) -> int:
     client = AsyncTydomClient(
         tydom_password=args.tydom_password,
         tydom_ip=args.tydom_ip,
@@ -124,6 +139,8 @@ def _do_run(args: argparse.Namespace) -> int:
             _handle_put_device_data,
             _handle_put_areas_data,
         ),
+        authorization_provider=authorization_provider,
+        connection_factory=connection_factory,
     )
 
     try:
