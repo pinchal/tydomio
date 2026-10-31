@@ -59,7 +59,7 @@ class AsyncTydomClient:
         """AsyncTydomClient constructor.
 
         :param tydom_password: Tydom password,
-        It can be retrieved using 'tydomio get-tydom-password'
+        It can be retrieved using 'tydomio-cli get-tydom-password'
         :param tydom_ip: The local access to your Tydom (optional)
         :param tydom_mac: The mac address of your Tydom
         :param deltadore_remote: hostname for remote access, used when no ip is provided

@@ -30,7 +30,7 @@ dev = [
 package = true
 
 [project.scripts]
-tydomio = "tydomio.cli:_main"
+tydomio-cli = "tydomio.cli:main"
 
 [tool.ruff]
 line-length = 88
