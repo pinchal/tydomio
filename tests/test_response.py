@@ -1,15 +1,9 @@
 import pytest
 
+from tests.conftest import CONFIG_CONTENT
 from tydomio.error import InvalidResponse
 from tydomio.response import ConfigResponse, JsonResponse, Ok, Response
 
-# synthetic /configs/file payload, every list left empty
-CONFIG_CONTENT = (
-    b'{"date": 1, "version_application": "1.0", "endpoints": [],'
-    b' "old_tycam": false, "moments": [], "os": "tydom", "groups": [],'
-    b' "areas": [], "scenarios": [], "id_catalog": "catalog",'
-    b' "version": "2.0", "zigbee_networks": []}'
-)
 JSON_HEADERS = {"content-type": "application/json"}
 
 
