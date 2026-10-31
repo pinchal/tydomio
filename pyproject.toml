@@ -6,27 +6,27 @@ authors = [
     {name = "Stéphane Pinchaux", email = "stephane@ggwp.me"},
 ]
 dependencies = [
-    "websockets==12.0",
-    "urllib3==2.2.1",
-    "httpx==0.27.0",
-    "pydantic==2.11.3",
+    "httpx>=0.28.1",
+    "pydantic>=2.12",
+    "websockets>=14",
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 readme = "README.md"
 license = {text = "GPL3"}
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.14",
+]
+
+[dependency-groups]
+dev = [
+  "coverage>=7.17",
+  "datamodel-code-generator>=0.87",
+  "pre-commit>=4.7",
+  "pylint>=4.1",
 ]
 
 [tool.uv]
-dev-dependencies = [
-  "coverage==7.8.0",
-  "datamodel-code-generator==0.30.1",
-  "pre-commit==4.1.0",
-  "pylint==3.3.5",
-]
-
 package = true
 
 [project.scripts]
@@ -60,7 +60,7 @@ ignore = [
 ]
 
 [tool.pylint.main]
-py-version=3.12
+py-version=3.14
 
 [tool.pylint."messages control"]
 disable=[
@@ -73,11 +73,3 @@ disable=[
 
 [tool.mypy]
 plugins = ["pydantic.mypy"]
-
-[[tool.mypy.overrides]]
-module = [
-    "httpx",
-    "websockets",
-    "websockets.auth",
-]
-ignore_missing_imports = true

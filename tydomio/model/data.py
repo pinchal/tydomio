@@ -1,4 +1,4 @@
-# ruff: noqa: D100, D101
+# ruff: noqa: D101
 """Data models for the Delta Dore Tydom API using Pydantic."""
 
 from pydantic import BaseModel, RootModel
