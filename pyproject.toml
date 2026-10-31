@@ -45,6 +45,7 @@ select = [
     "PYI", # flake8-pyi
     "UP", # pyupgrade
     "RUF", # ruff
+    "S",  # flake8-bandit (security)
     "W",  # pycodestyle
     "PIE", # flake8-pie
     "PGH004", # pygrep-hooks - Use specific rule codes when using noqa
@@ -68,8 +69,126 @@ disable=[
     "too-many-instance-attributes",
     "too-many-arguments",
     "missing-class-docstring",
-    "too-many-positional-arguments",
+    # Checks already run by ruff (the rule in the comment), faster.
+    "typevar-name-incorrect-variance",  # PLC0105
+    "missing-module-docstring",  # D100
+    "missing-function-docstring",  # D102+D103
+    "singleton-comparison",  # E711+E712
+    "unidiomatic-typecheck",  # E721
+    "typevar-double-variance",  # PLC0131
+    "typevar-name-mismatch",  # PLC0132
+    "single-string-used-for-slots",  # PLC0205
+    "consider-using-dict-items",  # PLC0206
+    "use-maxsplit-arg",  # PLC0207
+    "use-sequence-for-iteration",  # PLC0208
+    "consider-using-f-string",  # UP031+UP032
+    "line-too-long",  # E501
+    "trailing-whitespace",  # W291
+    "missing-final-newline",  # W292
+    "multiple-statements",  # E701+E702
+    "wrong-import-order",  # I001
+    "ungrouped-imports",  # I001
+    "wrong-import-position",  # E402
+    "useless-import-alias",  # PLC0414
+    "import-outside-toplevel",  # PLC0415
+    "use-implicit-booleaness-not-len",  # PLC1802
+    "non-ascii-name",  # PLC2401
+    "non-ascii-module-import",  # PLC2403
+    "unnecessary-direct-lambda-call",  # PLC3002
+    "init-is-generator",  # PLE0100
+    "return-in-init",  # PLE0101
+    "return-outside-function",  # F706
+    "nonlocal-and-global",  # PLE0115
+    "nonlocal-without-binding",  # PLE0117
+    "used-prior-global-declaration",  # PLE0118
+    "assigning-non-slot",  # PLE0237
+    "duplicate-bases",  # PLE0241
+    "unexpected-special-method-signature",  # PLE0302
+    "invalid-length-returned",  # PLE0303
+    "invalid-bool-returned",  # PLE0304
+    "invalid-index-returned",  # PLE0305
+    "invalid-str-returned",  # PLE0307
+    "invalid-bytes-returned",  # PLE0308
+    "invalid-hash-returned",  # PLE0309
+    "undefined-variable",  # F821
+    "undefined-all-variable",  # F822
+    "invalid-all-object",  # PLE0604
+    "invalid-all-format",  # PLE0605
+    "potential-index-error",  # PLE0643
+    "misplaced-bare-raise",  # PLE0704
+    "repeated-keyword",  # PLE1132
+    "await-outside-async",  # PLE1142
+    "logging-too-many-args",  # PLE1205
+    "logging-too-few-args",  # PLE1206
+    "bad-format-character",  # PLE1300
+    "bad-string-format-type",  # PLE1307
+    "bad-str-strip-call",  # PLE1310
+    "invalid-envvar-value",  # PLE1507
+    "singledispatch-method",  # PLE1519
+    "singledispatchmethod-function",  # PLE1520
+    "yield-inside-async-function",  # PLE1700
+    "bidirectional-unicode",  # PLE2502
+    "invalid-character-backspace",  # PLE2510
+    "invalid-character-sub",  # PLE2512
+    "invalid-character-esc",  # PLE2513
+    "invalid-character-nul",  # PLE2514
+    "invalid-character-zero-width-space",  # PLE2515
+    "comparison-with-itself",  # PLR0124
+    "comparison-of-constants",  # PLR0133
+    "useless-object-inheritance",  # UP004
+    "property-with-parameters",  # PLR0206
+    "consider-using-from-import",  # PLR0402
+    "too-many-return-statements",  # PLR0911
+    "too-many-branches",  # PLR0912
+    "too-many-statements",  # PLR0915
+    "too-many-positional-arguments",  # PLR0917
+    "redefined-argument-from-local",  # PLR1704
+    "stop-iteration-return",  # PLR1708
+    "useless-return",  # PLR1711
+    "consider-using-in",  # PLR1714
+    "chained-comparison",  # PLR1716
+    "consider-using-sys-exit",  # PLR1722
+    "super-with-arguments",  # UP008
+    "consider-using-min-builtin",  # PLR1730
+    "unnecessary-dict-index-lookup",  # PLR1733
+    "unnecessary-list-index-lookup",  # PLR1736
+    "dangerous-default-value",  # B006
+    "pointless-statement",  # B018
+    "unnecessary-pass",  # PIE790
+    "unnecessary-lambda",  # PLW0108
+    "duplicate-key",  # F601
+    "useless-else-on-loop",  # PLW0120
+    "self-assigning-variable",  # PLW0127
+    "redeclared-assigned-name",  # PLW0128
+    "assert-on-string-literal",  # PLW0129
+    "named-expr-without-context",  # PLW0131
+    "pointless-exception-statement",  # PLW0133
+    "lost-exception",  # B012
+    "nan-comparison",  # PLW0177
+    "assert-on-tuple",  # F631
+    "bad-staticmethod-argument",  # PLW0211
+    "super-without-brackets",  # PLW0245
+    "reimported",  # F811
+    "import-self",  # PLW0406
+    "global-variable-not-assigned",  # PLW0602
+    "global-statement",  # PLW0603
+    "global-at-module-level",  # PLW0604
+    "unused-import",  # F401
+    "unused-variable",  # F841
+    "cell-var-from-loop",  # B023
+    "self-cls-assignment",  # PLW0642
+    "bare-except",  # E722
+    "raise-missing-from",  # B904
+    "binary-op-exception",  # PLW0711
+    "f-string-without-interpolation",  # F541
+    "bad-open-mode",  # PLW1501
+    "shallow-copy-environ",  # PLW1507
+    "invalid-envvar-default",  # PLW1508
+    "subprocess-popen-preexec-fn",  # PLW1509
+    "subprocess-run-check",  # PLW1510
+    "useless-with-lock",  # PLW2101
+    "nested-min-max",  # PLW3301
 ]
 
-[tool.mypy]
-plugins = ["pydantic.mypy"]
+[tool.ty.rules]
+all = "error"
