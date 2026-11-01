@@ -43,11 +43,11 @@ async def test_user_reads_the_config_and_receives_pushed_devices_data() -> None:
         tydom_ip="192.0.2.1",
         tydom_mac="000000000000",
         on_connection_routines=(read_config,),
-        tydom_request_handlers=(on_devices_data,),
         authorization_provider=FakeAuthorizationProvider(),
         connection_factory=FakeConnectionFactory(websocket),
         sleep=FakeSleep(),
     )
+    client.subscribe(TydomPutDevicesDataRequest, on_devices_data)
     run = asyncio.create_task(client.run_websocket())
     async with asyncio.timeout(1):
         await both_received.wait()
