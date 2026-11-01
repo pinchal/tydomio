@@ -74,7 +74,8 @@ Make the simplest change that fully solves the task.
   (`noqa`, `type: ignore`, `pylint: disable`) without a one-line reason the user
   accepts, no `--no-verify`.
 - **Static analysis and types.** ruff (with its security rules), the formatter, pylint
-  (only the checks ruff does not cover) and ty run in pre-commit and in the CI. Type everything; `Any` only when
+  (a whitelist: `disable = ["all"]` plus an `enable` list of only the checks ruff and ty
+  miss) and ty run in pre-commit and in the CI. Type everything; `Any` only when
   unavoidable, at the boundary with untyped libraries.
 
 ## Tests
