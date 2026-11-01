@@ -289,8 +289,12 @@ POLICY: Final[Mapping[str, EndpointPolicy]] = {
         )
     ),
     "/scenarios/file": EndpointPolicy(
-        rules=(_id("scn[].id"), _id("scn[].grpAct[].id")),
-        opaque=("scn[].grpAct[].state[]",),
+        rules=(
+            _id("scn[].id"),
+            _id("scn[].grpAct[].id"),
+            _keep("scn[].grpAct[].state[].name", WORD),
+            _keep("scn[].grpAct[].state[].value", ENUM_VALUE),
+        )
     ),
     "/moments/file": EndpointPolicy(
         rules=(

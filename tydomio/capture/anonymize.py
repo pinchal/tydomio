@@ -267,8 +267,8 @@ class _Anonymizer:
         return placeholder(value)
 
     def _id(self, value: JsonValue, position: _Position) -> JsonValue:
-        if value is None:
-            return None
+        if value is None or value == "":
+            return value
         if isinstance(value, bool) or not isinstance(value, int | str):
             return self._unknown_leaf(value, position, KEEP_CONSTRAINT)
         number = self._ids.setdefault(str(value), len(self._ids) + 1)

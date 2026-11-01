@@ -158,6 +158,20 @@ def test_str_and_int_raw_ids_map_to_the_same_number_of_their_own_type() -> None:
     assert body_of(CONFIGS, body) == {"endpoints": [{"id_device": 1, "space_id": "1"}]}
 
 
+def test_empty_string_id_is_kept_empty() -> None:
+    body: JsonValue = {"endpoints": [{"space_id": ""}]}
+
+    assert body_of(CONFIGS, body) == body
+
+
+def test_scenario_action_name_and_value_are_kept() -> None:
+    body: JsonValue = {
+        "scn": [{"grpAct": [{"state": [{"name": "positionCmd", "value": "STOP"}]}]}]
+    }
+
+    assert body_of("/scenarios/file", body) == body
+
+
 @pytest.mark.parametrize(
     ("body", "expected", "path"),
     [
@@ -471,7 +485,16 @@ CANARY_BODIES: dict[str, JsonValue] = {
                 "id": "cnryGoneS",
                 "name": "cnryGoneSn",
                 "grpAct": [
-                    {"id": "cnryGoneSg", "state": [{"cnryGoneKey": "cnryGoneSt"}]}
+                    {
+                        "id": "cnryGoneSg",
+                        "state": [
+                            {
+                                "name": "cnryKeepStn",
+                                "value": "cnryKeepStv",
+                                "cnryKeepStk": "cnryGoneSt",
+                            }
+                        ],
+                    }
                 ],
             }
         ]
