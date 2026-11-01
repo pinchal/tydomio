@@ -177,6 +177,10 @@ Stop, explain in plain words what was reached, and wait for the user:
 - Checks: `uv run pre-commit run --all-files`.
 - CLI: `uv run tydomio-cli run`, configured by `TYDOM_IP`, `TYDOM_PASSWORD`,
   `TYDOM_MAC_ADDRESS`. It connects to the real box: ask the user first.
+- Capture: `uv run tydomio-capture [-o DIR] [--tydom-ip IP] [--tydom-mac MAC]`, the
+  password from `TYDOM_PASSWORD` or a prompt. GET only, anonymized; it writes
+  `./tydom-capture-<YYYYMM>-<hex>/` by default. It connects to the real box: ask the
+  user first, and review the capture before sharing it.
 - Tests: `uv run coverage run -m pytest`, then `uv run coverage report`.
 
 ## Module map
@@ -196,3 +200,9 @@ Current state, kept up to date with each change.
 | `tydomio/error.py` | Exception hierarchy (`TydomIoError`) | — |
 | `tydomio/globals.py` | `DEV_MODE` flag from the environment | — |
 | `tydomio/cli.py` | Temporary debug CLI to try the library on a real Tydom; not to be extended, the real CLI will be designed later | `client`, `requests` |
+| `tydomio/capture/jsonvalue.py` | `JsonValue` and the strict JSON parser (UTF-8, no NaN or Infinity, depth 64) | `error` |
+| `tydomio/capture/fetch.py` | Endpoint table, read-only `Fetcher` connection routine, `run_capture` with its deadline | `client`, `requests`, `response`, `error`, `capture.jsonvalue` |
+| `tydomio/capture/policy.py` | Anonymization rules per endpoint, pure data, and their path parser | — |
+| `tydomio/capture/anonymize.py` | Pure anonymization of the bodies by the policy: id map, names, keys, keep constraints, report of redacted leaves and renamed keys | `capture.policy`, `capture.jsonvalue` |
+| `tydomio/capture/store.py` | What is written: manifest and envelopes, secrets scan (password, MAC, IP) and their scrubbing, output directory, owner-only files | `capture.fetch`, `capture.anonymize`, `capture.policy`, `capture.jsonvalue` |
+| `tydomio/capture/cli.py` | `tydomio-capture` entry point: arguments, password, logging with its secret filter, DEV_MODE guard, refusal to write on a secret found, exit codes, summary | `client`, `globals`, `capture.*` |
