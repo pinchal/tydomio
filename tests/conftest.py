@@ -1,7 +1,7 @@
 """Minimal doubles of the network boundary, shared by the tests."""
 
 import asyncio
-from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 
 AUTHORIZATION = "Digest test"
@@ -129,3 +129,30 @@ def put(url: str, content: bytes) -> bytes:
         f"PUT {url} HTTP/1.1\r\ncontent-type: application/json\r\n\r\n".encode()
         + content
     )
+
+
+def answer_gets(
+    answers: Mapping[str, tuple[int, bytes]],
+) -> Callable[[bytes], bytes | None]:
+    """Answer each GET of a listed url with its status and JSON content.
+
+    The ping gets an empty 200; any other url gets no answer.
+    """
+
+    def reply(sent: bytes) -> bytes | None:
+        url = sent.split(b" ")[1].decode()
+        transac_id = sent.split(b"transac-id: ")[1].split(b"\r\n")[0]
+        headers = b"transac-id: " + transac_id + b"\r\n"
+        if url == "/ping":
+            return b"HTTP/1.1 200 OK\r\n" + headers + b"\r\n"
+        if url not in answers:
+            return None
+        status, content = answers[url]
+        return (
+            f"HTTP/1.1 {status} X\r\n".encode()
+            + headers
+            + b"content-type: application/json\r\n\r\n"
+            + content
+        )
+
+    return reply

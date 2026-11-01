@@ -33,6 +33,7 @@ package = true
 
 [project.scripts]
 tydomio-cli = "tydomio.cli:main"
+tydomio-capture = "tydomio.capture.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
