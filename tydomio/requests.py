@@ -6,28 +6,24 @@ import secrets
 from abc import ABC
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, TypeVar
+from typing import Final
 
 import pydantic
 
 from .error import InvalidRequest
 from .globals import DEV_MODE
 from .model.data import AreasData, DevicesData
-from .response import ConfigResponse, Ok, Response, has_json_content
+from .response import (
+    ConfigResponse,
+    Ok,
+    ParsedResponse,
+    Response,
+    has_json_content,
+)
 
 _MODULE_DIRECTORY_PATH = Path(__file__).parent.resolve()
 
 TRANSACTION_COUNTER = itertools.count(secrets.randbelow(100000000) + 1)
-
-
-class _ResponseInitProtocol(Protocol):
-    """Protocol for the response initialization."""
-
-    def __init__(self, response: Response) -> None:
-        """Initialize the response with the given response object."""
-
-
-DataModelT = TypeVar("DataModelT", bound=pydantic.BaseModel)
 
 
 @dataclass
@@ -120,7 +116,7 @@ class JsonRequest(Request):
                 json.dump(self.json_content, file, indent=4, ensure_ascii=False)
 
 
-class TydomRequest(Request):
+class TydomRequest[DataModelT: pydantic.BaseModel](Request):
     """Request made by the Tydom with a json payload to parse."""
 
     def __init__(
@@ -144,12 +140,14 @@ class TydomRequest(Request):
             raise InvalidRequest("No content in the request")
 
         try:
-            self.data: DataModelT = data_model_type.model_validate_json(self.content)
+            self.data: Final[DataModelT] = data_model_type.model_validate_json(
+                self.content
+            )
         except pydantic.ValidationError as error:
             raise InvalidRequest() from error
 
 
-class TydomPutDevicesDataRequest(TydomRequest):
+class TydomPutDevicesDataRequest(TydomRequest[DevicesData]):
     """Request made by the Tydom to push devices values."""
 
     def __init__(
@@ -169,7 +167,7 @@ class TydomPutDevicesDataRequest(TydomRequest):
         )
 
 
-class TydomPutAreasDataRequest(TydomRequest):
+class TydomPutAreasDataRequest(TydomRequest[AreasData]):
     """Request made by the Tydom to push areas data."""
 
     def __init__(
@@ -189,7 +187,7 @@ class TydomPutAreasDataRequest(TydomRequest):
         )
 
 
-class ClientRequest[ResponseT: _ResponseInitProtocol](Request, ABC):
+class ClientRequest[ResponseT: ParsedResponse](Request, ABC):
     """The ClientRequest.
 
     - This one can only be sent by the client to the Tydom

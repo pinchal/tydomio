@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import suppress
 
 import httpx
+import pydantic
 import pytest
 from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosed, InvalidMessage, InvalidStatus
@@ -139,6 +140,14 @@ def test_client_accepts_handler_of_tydom_request_subclass() -> None:
 
 def test_client_rejects_handler_of_other_type() -> None:
     async def handler(_request: int) -> None:
+        return None
+
+    with pytest.raises(TydomIoError):
+        make_client(handler)
+
+
+def test_client_rejects_handler_without_annotation() -> None:
+    async def handler(_request):
         return None
 
     with pytest.raises(TydomIoError):
@@ -423,9 +432,9 @@ async def test_send_raises_communication_error_when_connection_closed() -> None:
     ],
 )
 async def test_read_loop_routes_pushed_request_to_the_handler_of_its_type(
-    message: bytes, request_type: type[TydomRequest]
+    message: bytes, request_type: type[TydomRequest[pydantic.BaseModel]]
 ) -> None:
-    received: list[type[TydomRequest]] = []
+    received: list[type[TydomRequest[pydantic.BaseModel]]] = []
     handled = asyncio.Event()
 
     async def devices_handler(request: TydomPutDevicesDataRequest) -> None:

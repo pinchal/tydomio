@@ -8,6 +8,7 @@ from contextlib import AbstractAsyncContextManager, AsyncExitStack
 from typing import Any, Protocol, TypeVar, get_type_hints
 
 import httpx
+import pydantic
 from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidStatus
 
 from . import network
@@ -15,13 +16,13 @@ from .error import CommunicationError, InvalidRequest, InvalidResponse, TydomIoE
 from .pending_requests import PendingRequests
 from .protocol import parse_message
 from .requests import ClientRequest, PingRequest, TydomRequest
-from .response import Response, ResponseT
+from .response import ParsedResponse, Response
 
 CLIENT_LOGGER = logging.getLogger("tydomio.client")
 REQUEST_LOGGER = CLIENT_LOGGER.getChild("request")
 RESPONSE_LOGGER = CLIENT_LOGGER.getChild("response")
 
-TydomRequestT = TypeVar("TydomRequestT", bound=TydomRequest)
+TydomRequestT = TypeVar("TydomRequestT", bound=TydomRequest[pydantic.BaseModel])
 
 OnConnectionRoutine = Callable[["AsyncTydomClient"], Coroutine[Any, Any, None]]
 OnDisconnectionRoutine = Callable[[], Coroutine[Any, Any, None]]
@@ -126,14 +127,16 @@ class AsyncTydomClient:
 
         def _get_handler_request_type(
             handler: TydomRequestHandler[TydomRequestT],
-        ) -> type[TydomRequest]:
-            request_type = next(iter(get_type_hints(handler).values()))
+        ) -> type:
+            # an unannotated handler has no hint: rejected below, not StopIteration
+            request_type = next(iter(get_type_hints(handler).values()), None)
             if not (
                 isinstance(request_type, type)
                 and issubclass(request_type, TydomRequest)
             ):
                 raise TydomIoError(
-                    f"Handler {handler!r} must take a TydomRequest subclass"
+                    f"Handler {handler!r} must annotate its parameter"
+                    " with a TydomRequest subclass"
                 )
             return request_type
 
@@ -142,7 +145,7 @@ class AsyncTydomClient:
         }
 
         self._on_tydom_request_routines: dict[
-            type[TydomRequest], tuple[TydomRequestHandler[TydomRequestT], ...]
+            type, tuple[TydomRequestHandler[TydomRequestT], ...]
         ] = {
             request_type: tuple(
                 handler
@@ -261,6 +264,8 @@ class AsyncTydomClient:
                     for handler in self._on_tydom_request_routines.get(
                         type(parsed_msg), ()
                     ):
+                        # routing by type(parsed_msg) matches the handler's parameter,
+                        # which a dict of handlers keyed by type cannot express
                         task_group.create_task(
                             _log_handler_error(handler(parsed_msg))  # type: ignore
                         )
@@ -304,7 +309,7 @@ class AsyncTydomClient:
         """
         await self._connected.wait()
 
-    async def send(
+    async def send[ResponseT: ParsedResponse](
         self, request: ClientRequest[ResponseT], timeout: int | None = None
     ) -> ResponseT:
         """Send a request over the websocket connection and waits for the response.

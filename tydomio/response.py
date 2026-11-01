@@ -3,7 +3,7 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, TypeVar
+from typing import Protocol
 
 import pydantic
 
@@ -15,16 +15,6 @@ _STATUS_CODE_OK = 200
 _MODULE_DIRECTORY_PATH = Path(__file__).parent.resolve()
 
 
-class _ResponseInitProtocol(Protocol):
-    """Protocol for the response initialization."""
-
-    def __init__(self, response: Response) -> None:
-        """Initialize the response with the given response object."""
-
-
-ResponseT = TypeVar("ResponseT", bound="Response")
-
-
 def has_json_content(headers: dict[str, str]) -> bool:
     """Whether the content type is JSON, whatever its case and parameters."""
     media_type = headers.get("content-type", "").split(";", 1)[0]
@@ -32,7 +22,7 @@ def has_json_content(headers: dict[str, str]) -> bool:
 
 
 @dataclass(kw_only=True)
-class Response(_ResponseInitProtocol):
+class Response:
     """The Response.
 
     It's sent by the Tydom following a client's Request
@@ -48,6 +38,17 @@ class Response(_ResponseInitProtocol):
         if "transac-id" not in self.headers:
             return None
         return int(self.headers["transac-id"])
+
+
+class ParsedResponse(Protocol):
+    """A response parsed from a raw Response, identified by its transaction id."""
+
+    def __init__(self, response: Response) -> None:
+        """Initialize the response with the given response object."""
+
+    @property
+    def transac_id(self) -> int | None:
+        """Get the transaction id."""
 
 
 class JsonResponse(Response):

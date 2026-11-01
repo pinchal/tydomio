@@ -1,7 +1,6 @@
 import pytest
 
 from tydomio.error import InvalidRequest
-from tydomio.model.data import AreasData, DevicesData
 from tydomio.requests import (
     JsonRequest,
     PingRequest,
@@ -186,15 +185,12 @@ def test_json_request_rejects_invalid_json() -> None:
 def test_devices_data_request_validates_content() -> None:
     request = TydomPutDevicesDataRequest("PUT", "/devices/data", {}, DEVICES_DATA)
 
-    # TydomRequest.data is typed by an unbound TypeVar: narrow it for the checker
-    assert isinstance(request.data, DevicesData)
     assert request.data.root[0].endpoints[0].data[0].value == 50
 
 
 def test_areas_data_request_validates_content() -> None:
     request = TydomPutAreasDataRequest("PUT", "/areas/data", {}, AREAS_DATA)
 
-    assert isinstance(request.data, AreasData)
     assert request.data.root[0].data[0].value == "on"
 
 
