@@ -15,3 +15,7 @@ class InvalidResponse(CommunicationError):
 
 class InvalidRequest(CommunicationError):
     """Exception raised for invalid requests from Tydom."""
+
+
+class AuthorizationError(CommunicationError):
+    """Exception raised when the authorization cannot be obtained from Tydom."""

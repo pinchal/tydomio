@@ -3,7 +3,6 @@ import logging
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 
-import httpx
 import pydantic
 import pytest
 from websockets.datastructures import Headers
@@ -25,7 +24,7 @@ from tydomio.client import (
     OnDisconnectionRoutine,
     TydomRequestHandler,
 )
-from tydomio.error import CommunicationError, TydomIoError
+from tydomio.error import AuthorizationError, CommunicationError, TydomIoError
 from tydomio.requests import (
     PingRequest,
     TydomPutAreasDataRequest,
@@ -167,19 +166,8 @@ async def test_send_requires_connection() -> None:
         await make_client().send(PingRequest())
 
 
-@pytest.mark.parametrize(
-    "error",
-    [
-        httpx.ConnectError("unreachable"),
-        httpx.ConnectTimeout("timeout"),
-        httpx.ReadError("reset"),
-        httpx.RemoteProtocolError("disconnected"),
-    ],
-)
-async def test_run_websocket_retries_authorization_after_a_pause_on_transport_error(
-    error: Exception,
-) -> None:
-    authorization_provider = FakeAuthorizationProvider(error)
+async def test_run_websocket_retries_authorization_after_a_pause_on_failure() -> None:
+    authorization_provider = FakeAuthorizationProvider(AuthorizationError("failed"))
     sleep = FakeSleep()
     client = make_client_with_doubles(
         FakeConnectionFactory(),

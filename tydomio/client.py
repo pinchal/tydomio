@@ -7,12 +7,17 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
 from contextlib import AbstractAsyncContextManager, AsyncExitStack
 from typing import Any, Protocol, TypeVar, get_type_hints
 
-import httpx
 import pydantic
 from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidStatus
 
 from . import network
-from .error import CommunicationError, InvalidRequest, InvalidResponse, TydomIoError
+from .error import (
+    AuthorizationError,
+    CommunicationError,
+    InvalidRequest,
+    InvalidResponse,
+    TydomIoError,
+)
 from .pending_requests import PendingRequests
 from .protocol import parse_message
 from .requests import ClientRequest, PingRequest, TydomRequest
@@ -42,6 +47,7 @@ class WebsocketConnection(Protocol):
         """Close the connection."""
 
 
+# returns the Authorization header; signals any failure by raising AuthorizationError
 AuthorizationProvider = Callable[[], Awaitable[str]]
 ConnectionFactory = Callable[[str], AbstractAsyncContextManager[WebsocketConnection]]
 Sleep = Callable[[float], Awaitable[None]]
@@ -169,9 +175,8 @@ class AsyncTydomClient:
             try:
                 authorization = await self._get_authorization()
 
-            except httpx.TransportError as error:
-                # any network failure of the request (connect, read, write, protocol)
-                CLIENT_LOGGER.warning("Unable to reach the Tydom: %r", error)
+            except AuthorizationError as error:
+                CLIENT_LOGGER.warning("Unable to get the authorization: %s", error)
                 await self._sleep(wait_between_retry)
                 continue
 
