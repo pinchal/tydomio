@@ -135,13 +135,11 @@ def _do_run(
         tydom_ip=args.tydom_ip,
         tydom_mac=args.tydom_mac,
         on_connection_routines=(_poll_config_then_refresh_all,),
-        tydom_request_handlers=(
-            _handle_put_device_data,
-            _handle_put_areas_data,
-        ),
         authorization_provider=authorization_provider,
         connection_factory=connection_factory,
     )
+    client.subscribe(TydomPutDevicesDataRequest, _handle_put_device_data)
+    client.subscribe(TydomPutAreasDataRequest, _handle_put_areas_data)
 
     try:
         asyncio.run(client.run_websocket())

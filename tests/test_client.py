@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import logging
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
@@ -37,12 +38,9 @@ DEVICES_DATA = b'[{"id": 1, "endpoints": []}]'
 AREAS_DATA = b'[{"id": 1, "error": 0, "data": []}]'
 
 
-def make_client(*handlers: TydomRequestHandler) -> AsyncTydomClient:
+def make_client() -> AsyncTydomClient:
     return AsyncTydomClient(
-        tydom_password="",
-        tydom_ip="192.0.2.1",
-        tydom_mac="000000000000",
-        tydom_request_handlers=handlers,
+        tydom_password="", tydom_ip="192.0.2.1", tydom_mac="000000000000"
     )
 
 
@@ -54,7 +52,6 @@ def make_client_with_doubles(
     ping_interval: int = 30,
     on_connection: tuple[OnConnectionRoutine, ...] = (),
     on_disconnection: tuple[OnDisconnectionRoutine, ...] = (),
-    handlers: tuple[TydomRequestHandler, ...] = (),
 ) -> AsyncTydomClient:
     return AsyncTydomClient(
         tydom_password="",
@@ -63,7 +60,6 @@ def make_client_with_doubles(
         ping_interval=ping_interval,
         on_connection_routines=on_connection,
         on_disconnection_routines=on_disconnection,
-        tydom_request_handlers=handlers,
         authorization_provider=authorization_provider or FakeAuthorizationProvider(),
         connection_factory=connection_factory,
         sleep=sleep or FakeSleep(),
@@ -120,37 +116,36 @@ async def send_once_connected(
     return outcome[0]
 
 
-async def push_to_handlers(
-    *messages: bytes, handlers: tuple[TydomRequestHandler, ...], handled: asyncio.Event
+def client_pushing(*messages: bytes) -> AsyncTydomClient:
+    """Give a client whose websocket pushes the messages."""
+    return make_client_with_doubles(FakeConnectionFactory(FakeWebsocket(*messages)))
+
+
+async def push_to_handler(
+    *messages: bytes,
+    handler: TydomRequestHandler[TydomPutDevicesDataRequest],
+    handled: asyncio.Event,
 ) -> None:
-    """Push the messages to a client with the handlers until handled is set."""
-    client = make_client_with_doubles(
-        FakeConnectionFactory(FakeWebsocket(*messages)), handlers=handlers
-    )
+    """Push the messages to a client with the handler until handled is set."""
+    client = client_pushing(*messages)
+    client.subscribe(TydomPutDevicesDataRequest, handler)
     await run_then_cancel(client, handled)
 
 
-def test_client_accepts_handler_of_tydom_request_subclass() -> None:
-    async def handler(_request: TydomPutDevicesDataRequest) -> None:
-        return None
+class Recorder:
+    """Handler recording the requests, sets handled once it has the expected number."""
 
-    make_client(handler)
+    def __init__(self, expected: int = 1) -> None:
+        """Expect that number of requests."""
+        self._expected = expected
+        self.received: list[TydomRequest[pydantic.BaseModel]] = []
+        self.handled = asyncio.Event()
 
-
-def test_client_rejects_handler_of_other_type() -> None:
-    async def handler(_request: int) -> None:
-        return None
-
-    with pytest.raises(TydomIoError):
-        make_client(handler)
-
-
-def test_client_rejects_handler_without_annotation() -> None:
-    async def handler(_request):
-        return None
-
-    with pytest.raises(TydomIoError):
-        make_client(handler)
+    async def __call__(self, request: TydomRequest[pydantic.BaseModel]) -> None:
+        """Record the request."""
+        self.received.append(request)
+        if len(self.received) >= self._expected:
+            self.handled.set()
 
 
 async def test_send_rejects_request_without_transaction_id() -> None:
@@ -419,25 +414,106 @@ async def test_send_raises_communication_error_when_connection_closed() -> None:
         (put("/areas/data", AREAS_DATA), TydomPutAreasDataRequest),
     ],
 )
-async def test_read_loop_routes_pushed_request_to_the_handler_of_its_type(
+async def test_subscriber_receives_pushed_request_of_its_type(
     message: bytes, request_type: type[TydomRequest[pydantic.BaseModel]]
 ) -> None:
-    received: list[type[TydomRequest[pydantic.BaseModel]]] = []
-    handled = asyncio.Event()
+    recorder = Recorder()
+    client = client_pushing(message)
+    client.subscribe(request_type, recorder)
 
-    async def devices_handler(request: TydomPutDevicesDataRequest) -> None:
-        received.append(type(request))
-        handled.set()
+    await run_then_cancel(client, recorder.handled)
 
-    async def areas_handler(request: TydomPutAreasDataRequest) -> None:
-        received.append(type(request))
-        handled.set()
+    assert [type(request) for request in recorder.received] == [request_type]
 
-    await push_to_handlers(
-        message, handlers=(devices_handler, areas_handler), handled=handled
+
+async def test_subscriber_receives_pushed_requests_of_subclasses() -> None:
+    recorder = Recorder(expected=2)
+    client = client_pushing(
+        put("/devices/data", DEVICES_DATA), put("/areas/data", AREAS_DATA)
     )
+    client.subscribe(TydomRequest, recorder)
 
-    assert received == [request_type]
+    await run_then_cancel(client, recorder.handled)
+
+    assert [type(request) for request in recorder.received] == [
+        TydomPutDevicesDataRequest,
+        TydomPutAreasDataRequest,
+    ]
+
+
+async def test_subscriber_does_not_receive_pushed_request_of_other_type() -> None:
+    recorder = Recorder()
+    client = client_pushing(
+        put("/areas/data", AREAS_DATA), put("/devices/data", DEVICES_DATA)
+    )
+    client.subscribe(TydomPutDevicesDataRequest, recorder)
+
+    await run_then_cancel(client, recorder.handled)
+
+    assert [type(request) for request in recorder.received] == [
+        TydomPutDevicesDataRequest
+    ]
+
+
+@pytest.mark.parametrize(
+    "make_handler",
+    [
+        lambda recorder: recorder,
+        lambda recorder: functools.partial(Recorder.__call__, recorder),
+        lambda recorder: lambda request: recorder(request=request),
+    ],
+    ids=["callable-object", "partial", "lambda"],
+)
+async def test_subscribe_accepts_any_callable_handler(
+    make_handler: Callable[
+        [Recorder], Callable[[TydomPutDevicesDataRequest], Awaitable[None]]
+    ],
+) -> None:
+    recorder = Recorder()
+    client = client_pushing(put("/devices/data", DEVICES_DATA))
+    client.subscribe(TydomPutDevicesDataRequest, make_handler(recorder))
+
+    await run_then_cancel(client, recorder.handled)
+
+    assert len(recorder.received) == 1
+
+
+async def test_each_subscriber_of_a_type_receives_the_pushed_request() -> None:
+    first, second = Recorder(), Recorder()
+    client = client_pushing(put("/devices/data", DEVICES_DATA))
+    client.subscribe(TydomPutDevicesDataRequest, first)
+    client.subscribe(TydomPutDevicesDataRequest, second)
+
+    await run_then_cancel(client, second.handled)
+
+    assert (len(first.received), len(second.received)) == (1, 1)
+
+
+async def test_unsubscribed_handler_receives_no_pushed_request() -> None:
+    unsubscribed, subscribed = Recorder(), Recorder()
+    client = client_pushing(put("/devices/data", DEVICES_DATA))
+    unsubscribe = client.subscribe(TydomPutDevicesDataRequest, unsubscribed)
+    client.subscribe(TydomPutDevicesDataRequest, subscribed)
+
+    unsubscribe()
+    await run_then_cancel(client, subscribed.handled)
+
+    assert not unsubscribed.received
+
+
+async def test_unsubscribing_twice_keeps_the_other_subscriptions() -> None:
+    recorder = Recorder()
+    client = client_pushing(put("/devices/data", DEVICES_DATA))
+    unsubscribe = client.subscribe(TydomPutDevicesDataRequest, recorder)
+    client.subscribe(TydomPutDevicesDataRequest, recorder)
+
+    unsubscribe()
+    unsubscribe()
+    # well before the timeout of the unanswered ping
+    async with asyncio.timeout(1):
+        await run_then_cancel(client, recorder.handled)
+
+    assert len(recorder.received) == 1
 
 
 async def test_read_loop_logs_handler_error(caplog: pytest.LogCaptureFixture) -> None:
@@ -448,9 +524,9 @@ async def test_read_loop_logs_handler_error(caplog: pytest.LogCaptureFixture) ->
         raise TydomIoError("handler failed")
 
     with caplog.at_level(logging.ERROR, logger="tydomio.client"):
-        await push_to_handlers(
+        await push_to_handler(
             put("/devices/data", DEVICES_DATA),
-            handlers=(failing_handler,),
+            handler=failing_handler,
             handled=handled,
         )
 
@@ -467,14 +543,40 @@ async def test_read_loop_keeps_reading_after_handler_error() -> None:
             second_handled.set()
         raise TydomIoError("handler failed")
 
-    await push_to_handlers(
+    await push_to_handler(
         put("/devices/data", DEVICES_DATA),
         put("/devices/data", DEVICES_DATA),
-        handlers=(failing_handler,),
+        handler=failing_handler,
         handled=second_handled,
     )
 
     assert len(calls) == 2
+
+
+async def test_read_loop_logs_synchronous_handler_error_and_keeps_handling(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    recorder = Recorder()
+    calls: list[None] = []
+
+    def raising_on_first_call(request: TydomPutDevicesDataRequest) -> Awaitable[None]:
+        calls.append(None)
+        if len(calls) == 1:
+            raise RuntimeError("handler failed before returning an awaitable")
+        return recorder(request)
+
+    with caplog.at_level(logging.ERROR, logger="tydomio.client"):
+        await push_to_handler(
+            put("/devices/data", DEVICES_DATA),
+            put("/devices/data", DEVICES_DATA),
+            handler=raising_on_first_call,
+            handled=recorder.handled,
+        )
+
+    assert ("Error in request handler" in caplog.messages, len(recorder.received)) == (
+        True,
+        1,
+    )
 
 
 @pytest.mark.parametrize(
@@ -497,10 +599,10 @@ async def test_read_loop_keeps_reading_after_malformed_message(
 
     # well before the timeout of the unanswered ping
     async with asyncio.timeout(1):
-        await push_to_handlers(
+        await push_to_handler(
             malformed,
             put("/devices/data", DEVICES_DATA),
-            handlers=(handler,),
+            handler=handler,
             handled=handled,
         )
 
@@ -525,10 +627,10 @@ async def test_read_loop_logs_no_content_above_debug(
 
     with caplog.at_level(logging.DEBUG):
         async with asyncio.timeout(1):
-            await push_to_handlers(
+            await push_to_handler(
                 message,
                 put("/devices/data", DEVICES_DATA),
-                handlers=(handler,),
+                handler=handler,
                 handled=handled,
             )
 
@@ -548,9 +650,9 @@ async def test_handler_receives_the_response_to_its_request() -> None:
     client = make_client_with_doubles(
         FakeConnectionFactory(
             FakeWebsocket(put("/devices/data", DEVICES_DATA), reply=ok_reply)
-        ),
-        handlers=(handler,),
+        )
     )
+    client.subscribe(TydomPutDevicesDataRequest, handler)
 
     # well before the request timeout
     async with asyncio.timeout(1):
@@ -571,8 +673,8 @@ async def test_run_websocket_cancels_running_handlers_on_disconnection() -> None
             cancelled.append(None)
             raise
 
-    await push_to_handlers(
-        put("/devices/data", DEVICES_DATA), handlers=(handler,), handled=started
+    await push_to_handler(
+        put("/devices/data", DEVICES_DATA), handler=handler, handled=started
     )
 
     assert cancelled == [None]

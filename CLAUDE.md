@@ -184,7 +184,7 @@ Current state, kept up to date with each change.
 
 | Module | Responsibility | May depend on |
 |---|---|---|
-| `tydomio/client.py` | `AsyncTydomClient`: websocket loop over an injected authorization provider, connection factory and sleep, ping, sending requests, routing pushed requests to handlers | `network` (defaults), `pending_requests`, `protocol`, `requests`, `response`, `error`, websockets (exception types only) |
+| `tydomio/client.py` | `AsyncTydomClient`: websocket loop over an injected authorization provider, connection factory and sleep, ping, sending requests, routing pushed requests to the handlers subscribed to their type or a base class | `network` (defaults), `pending_requests`, `protocol`, `requests`, `response`, `error`, websockets (exception types only) |
 | `tydomio/protocol.py` | Conversion of the bytes received on the websocket into messages: prefix, start line, headers, chunked content | `requests`, `response`, `error` |
 | `tydomio/pending_requests.py` | `PendingRequests`: futures of the requests waiting for a response, matched by transaction id | `response` |
 | `tydomio/network.py` | Thin adapters to the real network: TLS context, digest authorization (httpx), websocket connection (websockets); excluded from coverage | `error`, httpx, websockets |

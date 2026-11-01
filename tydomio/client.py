@@ -5,7 +5,7 @@ import functools
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
 from contextlib import AbstractAsyncContextManager, AsyncExitStack
-from typing import Any, Protocol, TypeVar, get_type_hints
+from typing import Any, Protocol
 
 import pydantic
 from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidStatus
@@ -27,11 +27,15 @@ CLIENT_LOGGER = logging.getLogger("tydomio.client")
 REQUEST_LOGGER = CLIENT_LOGGER.getChild("request")
 RESPONSE_LOGGER = CLIENT_LOGGER.getChild("response")
 
-TydomRequestT = TypeVar("TydomRequestT", bound=TydomRequest[pydantic.BaseModel])
-
 OnConnectionRoutine = Callable[["AsyncTydomClient"], Coroutine[Any, Any, None]]
 OnDisconnectionRoutine = Callable[[], Coroutine[Any, Any, None]]
-TydomRequestHandler = Callable[[TydomRequestT], Coroutine[Any, Any, None]]
+type TydomRequestHandler[HandledT: TydomRequest[pydantic.BaseModel]] = Callable[
+    [HandledT], Awaitable[None]
+]
+# gives the handling of a pushed request, or None when not subscribed to its type
+_Subscription = Callable[
+    [TydomRequest[pydantic.BaseModel]], Callable[[], Awaitable[None]] | None
+]
 
 
 class WebsocketConnection(Protocol):
@@ -73,7 +77,6 @@ class AsyncTydomClient:
         ping_interval: int = 30,
         on_connection_routines: tuple[OnConnectionRoutine, ...] = (),
         on_disconnection_routines: tuple[OnDisconnectionRoutine, ...] = (),
-        tydom_request_handlers: tuple[TydomRequestHandler[TydomRequestT], ...] = (),
         authorization_provider: AuthorizationProvider | None = None,
         connection_factory: ConnectionFactory | None = None,
         sleep: Sleep = asyncio.sleep,
@@ -131,35 +134,39 @@ class AsyncTydomClient:
         self._on_connection_routines = on_connection_routines
         self._on_disconnection_routines = on_disconnection_routines
 
-        def _get_handler_request_type(
-            handler: TydomRequestHandler[TydomRequestT],
-        ) -> type:
-            # an unannotated handler has no hint: rejected below, not StopIteration
-            request_type = next(iter(get_type_hints(handler).values()), None)
-            if not (
-                isinstance(request_type, type)
-                and issubclass(request_type, TydomRequest)
-            ):
-                raise TydomIoError(
-                    f"Handler {handler!r} must annotate its parameter"
-                    " with a TydomRequest subclass"
-                )
-            return request_type
+        self._subscriptions: list[_Subscription] = []
 
-        type_of_requests_handled = {
-            _get_handler_request_type(handler) for handler in tydom_request_handlers
-        }
+    def subscribe[RequestT: TydomRequest[pydantic.BaseModel]](
+        self, request_type: type[RequestT], handler: TydomRequestHandler[RequestT]
+    ) -> Callable[[], None]:
+        """Call the handler with each pushed request of request_type or a subclass.
 
-        self._on_tydom_request_routines: dict[
-            type, tuple[TydomRequestHandler[TydomRequestT], ...]
-        ] = {
-            request_type: tuple(
-                handler
-                for handler in tydom_request_handlers
-                if request_type is _get_handler_request_type(handler)
-            )
-            for request_type in type_of_requests_handled
-        }
+        Subscribing to TydomRequest receives every pushed request. Each subscription
+        is a separate registration: a handler subscribed twice, or to two types that
+        both match a request, is called once per matching subscription. Subscribing
+        is allowed before or while run_websocket runs. Handlers run as tasks of the
+        connection; their RuntimeError is logged without ending the connection.
+
+        :param request_type: type of the pushed requests to receive
+        :param handler: coroutine function called with each matching request
+        :return: unsubscribe, removing this subscription; calling it again is harmless
+        """
+
+        def subscription(
+            request: TydomRequest[pydantic.BaseModel],
+        ) -> Callable[[], Awaitable[None]] | None:
+            # the handler is called in its task, so its errors never stop the reading
+            if isinstance(request, request_type):
+                return functools.partial(handler, request)
+            return None
+
+        self._subscriptions.append(subscription)
+
+        def unsubscribe() -> None:
+            if subscription in self._subscriptions:
+                self._subscriptions.remove(subscription)
+
+        return unsubscribe
 
     async def _get_authorization(self) -> str:
         CLIENT_LOGGER.info("Get authorization from Tydom")
@@ -266,14 +273,10 @@ class AsyncTydomClient:
                     continue
 
                 if isinstance(parsed_msg, TydomRequest):
-                    for handler in self._on_tydom_request_routines.get(
-                        type(parsed_msg), ()
-                    ):
-                        # routing by type(parsed_msg) matches the handler's parameter,
-                        # which a dict of handlers keyed by type cannot express
-                        task_group.create_task(
-                            _log_handler_error(handler(parsed_msg))  # type: ignore
-                        )
+                    # a snapshot, so subscribing meanwhile cannot alter the iteration
+                    for subscription in tuple(self._subscriptions):
+                        if (handling := subscription(parsed_msg)) is not None:
+                            task_group.create_task(_log_handler_error(handling))
 
                 elif isinstance(parsed_msg, Response):
                     if not self._pending_requests.resolve(parsed_msg):
@@ -386,9 +389,9 @@ class AsyncTydomClient:
         return len(self._pending_requests)
 
 
-async def _log_handler_error(handling: Coroutine[Any, Any, None]) -> None:
+async def _log_handler_error(handling: Callable[[], Awaitable[None]]) -> None:
     """Run a request handler, logging its error rather than ending the connection."""
     try:
-        await handling
+        await handling()
     except RuntimeError:
         CLIENT_LOGGER.exception("Error in request handler")
