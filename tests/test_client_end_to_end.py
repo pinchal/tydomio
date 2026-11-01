@@ -20,8 +20,7 @@ from tydomio.requests import GetConfigFile, TydomPutDevicesDataRequest
 
 async def test_user_reads_the_config_and_receives_pushed_devices_data() -> None:
     configs: list[Config] = []
-    # TydomRequest.data is typed with a TypeVar of __init__, not DevicesData
-    devices_data: list[object] = []
+    devices_data: list[DevicesData] = []
     both_received = asyncio.Event()
 
     def check_both_received() -> None:
