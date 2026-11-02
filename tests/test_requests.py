@@ -10,6 +10,8 @@ from tydomio.model.usages.area import AreaWrite
 from tydomio.model.usages.boiler import Boiler, BoilerWrite
 from tydomio.model.usages.shutter import PositionCmd, Shutter, ShutterWrite
 from tydomio.requests import (
+    GetAreasData,
+    GetDevicesData,
     JsonRequest,
     PingRequest,
     Request,
@@ -344,3 +346,14 @@ def test_other_requests_log_nothing_when_sent(
         PingRequest().log_sending()
 
     assert caplog.records == []
+
+
+@pytest.mark.parametrize(
+    ("request_", "url"),
+    [(GetDevicesData(), "/devices/data"), (GetAreasData(), "/areas/data")],
+)
+def test_get_data_request_bytes(request_: Request, url: str) -> None:
+    raw = request_.to_bytes(cmd_prefix=b"")
+
+    assert raw.startswith(f"GET {url} HTTP/1.1\r\n".encode())
+    assert b"Content-Type: application/json; charset=UTF-8" in header_lines(raw)

@@ -30,6 +30,7 @@ from tydomio.installation import EndpointRef
 from tydomio.model.usages.shutter import Shutter, ShutterWrite
 from tydomio.requests import (
     ClientRequest,
+    GetDevicesData,
     PingRequest,
     TydomPutAreasDataRequest,
     TydomPutDevicesDataRequest,
@@ -845,3 +846,59 @@ async def test_write_timeout_raises_after_a_single_request() -> None:
 
     assert isinstance(outcome, CommunicationError)
     assert sum(line.startswith(b"PUT ") for line in start_lines(websocket)) == 1
+
+
+def devices_data_response(sent: bytes) -> bytes:
+    transac_id = sent.split(b"transac-id: ")[1].split(b"\r\n")[0]
+    return (
+        b"HTTP/1.1 200 OK\r\ntransac-id: "
+        + transac_id
+        + b"\r\nuri-origin: /devices/data\r\n"
+        + b"content-type: application/json\r\n\r\n"
+        + DEVICES_DATA
+    )
+
+
+async def events_of_get_with_push(*, push_first: bool) -> list[str]:
+    """Order of a push handler and the sender of a GET, both buffered in one read."""
+    events: list[str] = []
+    done = asyncio.Event()
+    push = put("/devices/data", DEVICES_DATA)
+
+    def reply(sent: bytes) -> bytes | None:
+        if not sent.startswith(b"GET /devices/data"):
+            return None
+        first, second = (
+            (push, devices_data_response(sent))
+            if push_first
+            else (devices_data_response(sent), push)
+        )
+        websocket.push(first)
+        return second
+
+    websocket = FakeWebsocket(reply=reply)
+
+    async def handler(_request: TydomPutDevicesDataRequest) -> None:
+        events.append("push")  # no await before acting, as the contract requires
+
+    async def routine(client: AsyncTydomClient) -> None:
+        await client.send(GetDevicesData())
+        events.append("response")
+        done.set()
+
+    client = make_client_with_doubles(
+        FakeConnectionFactory(websocket), on_connection=(routine,)
+    )
+    client.subscribe(TydomPutDevicesDataRequest, handler)
+    await run_then_cancel(client, done)
+    # let a handler started after the response run
+    await asyncio.sleep(0)
+    return events
+
+
+async def test_push_read_before_a_response_is_handled_before_send_returns() -> None:
+    assert await events_of_get_with_push(push_first=True) == ["push", "response"]
+
+
+async def test_push_read_after_a_response_is_handled_after_send_returns() -> None:
+    assert await events_of_get_with_push(push_first=False) == ["response", "push"]

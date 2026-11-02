@@ -146,6 +146,9 @@ class AsyncTydomClient:
         both match a request, is called once per matching subscription. Subscribing
         is allowed before or while run_websocket runs. Handlers run as tasks of the
         connection; their RuntimeError is logged without ending the connection.
+        A handler for a push read before the response to a send starts before the
+        task awaiting that send resumes, and one for a push read after it starts
+        after, as long as the handlers do not await before acting.
 
         :param request_type: type of the pushed requests to receive
         :param handler: coroutine function called with each matching request
@@ -342,6 +345,9 @@ class AsyncTydomClient:
             asyncio.CancelledError: If the task is cancelled while waiting.
 
         Notes:
+            - A handler for a push read before this response starts before the
+              caller resumes, one for a push read after it starts after, as long as
+              the handlers do not await before acting.
             - The method ensures that the transaction_id of the request is unique
               among the requests currently in progress.
             - The response is awaited asynchronously, and the request is removed

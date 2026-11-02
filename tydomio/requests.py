@@ -16,7 +16,9 @@ from .model.data import AreasData, DevicesData
 from .model.usages import WRITES, Area, UsageModel, UsageWrite
 from .model.usages.area import AreaWrite
 from .response import (
+    AreasDataResponse,
     ConfigResponse,
+    DevicesDataResponse,
     Ok,
     ParsedResponse,
     Response,
@@ -236,6 +238,38 @@ class GetConfigFile(ClientRequest[ConfigResponse]):
         super().__init__(
             method="GET",
             url="/configs/file",
+            headers={
+                "Content-Type": "application/json; charset=UTF-8",
+            },
+        )
+
+
+class GetDevicesData(ClientRequest[DevicesDataResponse]):
+    """ClientRequest to get /devices/data."""
+
+    response_type = DevicesDataResponse
+
+    def __init__(self) -> None:
+        """Initialize the get devices data request."""
+        super().__init__(
+            method="GET",
+            url="/devices/data",
+            headers={
+                "Content-Type": "application/json; charset=UTF-8",
+            },
+        )
+
+
+class GetAreasData(ClientRequest[AreasDataResponse]):
+    """ClientRequest to get /areas/data."""
+
+    response_type = AreasDataResponse
+
+    def __init__(self) -> None:
+        """Initialize the get areas data request."""
+        super().__init__(
+            method="GET",
+            url="/areas/data",
             headers={
                 "Content-Type": "application/json; charset=UTF-8",
             },
