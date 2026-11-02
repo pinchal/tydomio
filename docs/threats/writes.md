@@ -116,5 +116,5 @@ library does not send it again: the caller reads the state back before deciding.
 
 Heating writes are never sent to the real box, not by tests, examples or default
 routines, and tests use injected doubles only. The acknowledgement (status 200, no
-content) is assumed from the other requests, not verified against the box for a
-write.
+content) was checked on the real box once, with a shutter `positionCmd` `DOWN`, which
+moved the shutter. It is not verified for heating writes.
