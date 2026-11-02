@@ -165,6 +165,15 @@ async def test_send_requires_connection() -> None:
         await make_client().send(PingRequest())
 
 
+async def test_write_refused_when_not_connected_is_not_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.DEBUG), pytest.raises(CommunicationError):
+        await make_client().send(shutter_write())
+
+    assert not [r for r in caplog.records if r.name == "tydomio.requests"]
+
+
 async def test_run_websocket_retries_authorization_after_a_pause_on_failure() -> None:
     authorization_provider = FakeAuthorizationProvider(AuthorizationError("failed"))
     sleep = FakeSleep()
@@ -725,6 +734,24 @@ async def test_connection_reconnection_and_pushes_send_nothing_but_pings() -> No
         await run_until_script_ends(client)
 
     assert set(start_lines(*websockets)) == {b"GET /ping HTTP/1.1"}
+
+
+async def test_sent_write_logs_its_field_names_without_values(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    websocket = FakeWebsocket(reply=ok_reply)
+
+    with caplog.at_level(logging.DEBUG):
+        await send_once_connected(websocket, shutter_write())
+
+    above_debug = [r.getMessage() for r in caplog.records if r.levelno > logging.DEBUG]
+    assert "Write to a Shutter: position" in above_debug
+    assert not any("42" in message for message in above_debug)
+    assert any(
+        "42" in r.getMessage()
+        for r in caplog.records
+        if r.levelno == logging.DEBUG and r.name == "tydomio.requests"
+    )
 
 
 async def test_write_lost_with_the_connection_is_not_resent() -> None:

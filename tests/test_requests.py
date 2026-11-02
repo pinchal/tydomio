@@ -308,9 +308,18 @@ def test_write_skipping_validation_is_validated_again() -> None:
         WriteEndpoint(SHUTTER, ShutterWrite.model_construct(position=500))
 
 
-def test_write_logs_no_value_above_debug(caplog: pytest.LogCaptureFixture) -> None:
+def test_building_a_write_logs_nothing(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.DEBUG):
         WriteEndpoint(SHUTTER, ShutterWrite(position=42))
+
+    assert caplog.records == []
+
+
+def test_write_logs_no_value_above_debug(caplog: pytest.LogCaptureFixture) -> None:
+    request = WriteEndpoint(SHUTTER, ShutterWrite(position=42))
+
+    with caplog.at_level(logging.DEBUG):
+        request.log_sending()
 
     assert [r.getMessage() for r in caplog.records if r.levelno > logging.DEBUG] == [
         "Write to a Shutter: position"
@@ -318,9 +327,20 @@ def test_write_logs_no_value_above_debug(caplog: pytest.LogCaptureFixture) -> No
 
 
 def test_write_logs_its_values_at_debug(caplog: pytest.LogCaptureFixture) -> None:
+    request = WriteEndpoint(SHUTTER, ShutterWrite(position=42))
+
     with caplog.at_level(logging.DEBUG):
-        WriteEndpoint(SHUTTER, ShutterWrite(position=42))
+        request.log_sending()
 
     assert any(
         "42" in r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG
     )
+
+
+def test_other_requests_log_nothing_when_sent(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.DEBUG):
+        PingRequest().log_sending()
+
+    assert caplog.records == []

@@ -7,7 +7,7 @@ import secrets
 from abc import ABC
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Final
+from typing import Final, override
 
 import pydantic
 
@@ -218,6 +218,12 @@ class ClientRequest[ResponseT: ParsedResponse](Request, ABC):
         """
         return self.response_type(response)
 
+    def log_sending(self) -> None:
+        """Log the request, called by the client just before it goes on the wire.
+
+        It logs nothing by default.
+        """
+
 
 class PingRequest(ClientRequest[Ok]):
     """Ping request to check if the server is reachable."""
@@ -273,18 +279,24 @@ class _Write(ClientRequest[Ok]):
             )
         # revalidated: model_construct and model_copy skip the bounds
         body = type(write).model_validate(dict(write)).body()
-        LOGGER.info(
-            "Write to a %s: %s",
-            usage.__name__,
-            ", ".join(str(item["name"]) for item in body),
-        )
-        LOGGER.debug("Write values %s", body)
         super().__init__(
             method="PUT",
             url=url,
             headers={"Content-Type": "application/json; charset=UTF-8"},
             content=json.dumps(body, allow_nan=False).encode(),
         )
+        self._usage_name = usage.__name__
+        self._body = body
+
+    @override
+    def log_sending(self) -> None:
+        """Log the usage and field names at INFO, the values at DEBUG only."""
+        LOGGER.info(
+            "Write to a %s: %s",
+            self._usage_name,
+            ", ".join(str(item["name"]) for item in self._body),
+        )
+        LOGGER.debug("Write values %s", self._body)
 
 
 class WriteEndpoint[U: UsageModel](_Write):
