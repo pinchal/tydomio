@@ -3,7 +3,7 @@ from collections.abc import Callable
 import pytest
 
 from tydomio.error import InvalidTarget
-from tydomio.installation import AreaRef, EndpointRef, Installation
+from tydomio.installation import AreaRef, EndpointRef, GroupRef, Installation
 from tydomio.model.config import Config
 from tydomio.model.data import AreasData, Data, DevicesData, Endpoint, ModelItem
 from tydomio.model.usages import Area
@@ -11,7 +11,9 @@ from tydomio.model.usages.boiler import Boiler
 from tydomio.model.usages.shutter import Shutter
 
 # endpoint id 1 on two devices, of two usages
-INSTALLATION = Installation({(10, 1): "shutter", (20, 1): "boiler"}, [7])
+INSTALLATION = Installation(
+    {(10, 1): "shutter", (20, 1): "boiler"}, [7], {5: "shutter", 6: "light"}
+)
 POSITION = Data(name="position", validity="upToDate", value=40)
 
 
@@ -66,6 +68,36 @@ def test_from_config_indexes_endpoints_by_device_and_endpoint() -> None:
     assert ref == EndpointRef(10, 1, Shutter)
 
 
+def test_from_config_indexes_groups_by_id() -> None:
+    config = Config.model_validate(
+        {
+            "date": 1,
+            "version_application": "1.0",
+            "endpoints": [],
+            "old_tycam": False,
+            "moments": [],
+            "os": "tydom",
+            "groups": [
+                {
+                    "group_all": False,
+                    "usage": "shutter",
+                    "name": "name",
+                    "id": 5,
+                    "is_group_user": True,
+                    "picto": "picto",
+                }
+            ],
+            "areas": [],
+            "scenarios": [],
+            "id_catalog": "catalog",
+            "version": "2.0",
+            "zigbee_networks": [],
+        }
+    )
+
+    assert Installation.from_config(config).group(5, Shutter) == GroupRef(5, Shutter)
+
+
 def test_endpoint_id_shared_by_two_devices_resolves_per_device() -> None:
     ref = INSTALLATION.endpoint(20, 1, Boiler)
 
@@ -84,6 +116,26 @@ def test_endpoint_of_another_usage_is_refused() -> None:
         INSTALLATION.endpoint(10, 1, Boiler)
 
     assert str(raised.value) == "The endpoint is a shutter, not a Boiler"
+
+
+def test_unknown_group_is_refused_without_its_id() -> None:
+    with pytest.raises(InvalidTarget) as raised:
+        INSTALLATION.group(99, Shutter)
+
+    assert "99" not in str(raised.value)
+
+
+def test_group_of_another_usage_is_refused() -> None:
+    with pytest.raises(InvalidTarget) as raised:
+        INSTALLATION.group(6, Shutter)
+
+    assert str(raised.value) == "The group is a light, not a Shutter"
+
+
+@pytest.mark.parametrize("group_id", ["5/../x", 5.0, True])
+def test_group_reference_refuses_an_id_that_is_not_an_int(group_id: object) -> None:
+    with pytest.raises(InvalidTarget):
+        untyped(GroupRef)(group_id, Shutter)
 
 
 def test_known_area_is_referenced() -> None:

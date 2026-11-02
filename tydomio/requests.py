@@ -13,7 +13,7 @@ import pydantic
 
 from .error import InvalidRequest, InvalidTarget
 from .globals import DEV_MODE
-from .installation import AreaRef, EndpointRef
+from .installation import AreaRef, EndpointRef, GroupRef
 from .model.data import AreasData, DevicesData
 from .model.usages import WRITES, Area, UsageModel, UsageWrite
 from .model.usages.area import AreaWrite
@@ -297,6 +297,14 @@ class WriteEndpoint[U: UsageModel](_Write):
             ref.usage,
             write,
         )
+
+
+class WriteGroup[U: UsageModel](_Write):
+    """ClientRequest writing fields of every device of a group."""
+
+    def __init__(self, ref: GroupRef[U], write: UsageWrite[U]) -> None:
+        """Write to the group of the reference."""
+        super().__init__(f"/groups/{ref.group_id}/data", ref.usage, write)
 
 
 class WriteArea(_Write):

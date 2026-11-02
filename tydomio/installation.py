@@ -1,4 +1,4 @@
-"""The installation described by `/configs/file`: the usage of each endpoint, the areas.
+"""The installation described by `/configs/file`: the usage of each endpoint and group.
 
 It gives the references a write is addressed to, and types pushed data by usage.
 """
@@ -19,6 +19,11 @@ def _check_id(value: object) -> None:
         raise InvalidTarget("An id must be an int")
 
 
+def _check_usage(kind: str, name: str, usage: type[UsageModel]) -> None:
+    if USAGES.get(name) is not usage:
+        raise InvalidTarget(f"The {kind} is a {name}, not a {usage.__name__}")
+
+
 @dataclass(frozen=True)
 class EndpointRef[U: UsageModel]:
     """An endpoint of the installation, known to have the usage of model U."""
@@ -31,6 +36,18 @@ class EndpointRef[U: UsageModel]:
         """Refuse ids that are not ints."""
         _check_id(self.device_id)
         _check_id(self.endpoint_id)
+
+
+@dataclass(frozen=True)
+class GroupRef[U: UsageModel]:
+    """A group of the installation, known to have the usage of model U."""
+
+    group_id: int
+    usage: type[U]
+
+    def __post_init__(self) -> None:
+        """Refuse an id that is not an int."""
+        _check_id(self.group_id)
 
 
 @dataclass(frozen=True)
@@ -47,10 +64,16 @@ class AreaRef:
 class Installation:
     """Endpoints by (device id, endpoint id), as endpoint ids repeat across devices."""
 
-    def __init__(self, endpoints: Mapping[tuple[int, int], str], areas: Iterable[int]):
-        """Know these endpoints, with their usage name, and these area ids."""
+    def __init__(
+        self,
+        endpoints: Mapping[tuple[int, int], str],
+        areas: Iterable[int],
+        groups: Mapping[int, str],
+    ):
+        """Know these endpoints and groups, with their usage name, and these areas."""
         self._endpoints = dict(endpoints)
         self._areas = frozenset(areas)
+        self._groups = dict(groups)
 
     @classmethod
     def from_config(cls, config: Config) -> Self:
@@ -61,16 +84,23 @@ class Installation:
                 for endpoint in config.endpoints
             },
             (area.id for area in config.areas),
+            {group.id: group.usage for group in config.groups},
         )
 
     def endpoint[U: UsageModel](
         self, device_id: int, endpoint_id: int, usage: type[U]
     ) -> EndpointRef[U]:
         """Give the endpoint's reference; InvalidTarget if unknown or another usage."""
-        name = self._usage(device_id, endpoint_id)
-        if USAGES.get(name) is not usage:
-            raise InvalidTarget(f"The endpoint is a {name}, not a {usage.__name__}")
+        _check_usage("endpoint", self._usage(device_id, endpoint_id), usage)
         return EndpointRef(device_id, endpoint_id, usage)
+
+    def group[U: UsageModel](self, group_id: int, usage: type[U]) -> GroupRef[U]:
+        """Give the group's reference; InvalidTarget if unknown or another usage."""
+        name = self._groups.get(group_id)
+        if name is None:
+            raise InvalidTarget("Unknown group")
+        _check_usage("group", name, usage)
+        return GroupRef(group_id, usage)
 
     def area(self, area_id: int) -> AreaRef:
         """Give the area's reference; InvalidTarget if unknown."""
