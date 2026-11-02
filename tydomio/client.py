@@ -345,7 +345,9 @@ class AsyncTydomClient:
             - The method ensures that the transaction_id of the request is unique
               among the requests currently in progress.
             - The response is awaited asynchronously, and the request is removed
-              from the in-progress list once completed or in case of an exception.
+              from the in-progress list whenever the method ends: response
+              received, timeout, connection lost or closed, or cancellation. A
+              response arriving afterwards is dropped as unexpected.
 
         """
         if timeout is None:
@@ -360,35 +362,39 @@ class AsyncTydomClient:
         if self._websocket is None:
             raise CommunicationError("Not connected")
 
-        future_response = self._pending_requests.register(request.transaction_id)
-
         CLIENT_LOGGER.debug(
             "Sending request '%s' with transaction id %s",
             type(request).__name__,
             request.transaction_id,
         )
         request.log_sending()
+        future_response = self._pending_requests.register(request.transaction_id)
         try:
-            await self._websocket.send(request.to_bytes(cmd_prefix=self._cmd_prefix))
-        except ConnectionClosed as error:
-            # no response will come, and nobody would retrieve the future's error
-            self._pending_requests.abandon(request.transaction_id)
-            raise CommunicationError("Connection closed") from error
+            try:
+                await self._websocket.send(
+                    request.to_bytes(cmd_prefix=self._cmd_prefix)
+                )
+            except ConnectionClosed as error:
+                raise CommunicationError("Connection closed") from error
 
-        try:
-            async with asyncio.timeout(timeout):
-                response = request.parse_response(await future_response)
+            try:
+                async with asyncio.timeout(timeout):
+                    response = request.parse_response(await future_response)
 
-            CLIENT_LOGGER.debug(
-                "Received response '%s' with transaction id %s",
-                type(response).__name__,
-                response.transac_id,
-            )
-            return response
+                CLIENT_LOGGER.debug(
+                    "Received response '%s' with transaction id %s",
+                    type(response).__name__,
+                    response.transac_id,
+                )
+                return response
 
-        except asyncio.exceptions.TimeoutError as timeout_error:
-            self._pending_requests.abandon(request.transaction_id)
-            raise CommunicationError("Request timeout") from timeout_error
+            except asyncio.exceptions.TimeoutError as timeout_error:
+                raise CommunicationError("Request timeout") from timeout_error
+
+        finally:
+            # whatever ends the wait (cancellation included), nobody will retrieve
+            # the response or the future's error any more
+            self._pending_requests.abandon(request.transaction_id, future_response)
 
     def get_number_of_requests_in_progress(self) -> int:
         """Get the number of requests in progress."""

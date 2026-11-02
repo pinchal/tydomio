@@ -60,9 +60,9 @@ async def test_unexpected_response_resolves_nothing() -> None:
 
 async def test_abandoned_request_is_no_longer_pending() -> None:
     pending = PendingRequests()
-    pending.register(1)
+    future = pending.register(1)
 
-    pending.abandon(1)
+    pending.abandon(1, future)
 
     assert 1 not in pending
 
@@ -82,3 +82,50 @@ async def test_flush_ignores_cancelled_request() -> None:
     pending.flush(RuntimeError())
 
     assert 1 not in pending
+
+
+async def test_abandon_ignores_request_no_longer_pending() -> None:
+    pending = PendingRequests()
+    future = pending.register(1)
+    pending.resolve(response_to(1))
+
+    pending.abandon(1, future)
+
+    assert 1 not in pending
+
+
+async def test_abandon_keeps_new_request_with_same_transaction_id() -> None:
+    pending = PendingRequests()
+    first = pending.register(1)
+    pending.flush(RuntimeError())
+    pending.register(1)
+
+    pending.abandon(1, first)
+
+    assert 1 in pending
+
+
+async def test_resolve_reports_cancelled_request_as_not_waiting() -> None:
+    pending = PendingRequests()
+    pending.register(1).cancel()
+
+    assert not pending.resolve(response_to(1))
+
+
+async def test_resolve_forgets_cancelled_request() -> None:
+    pending = PendingRequests()
+    pending.register(1).cancel()
+
+    pending.resolve(response_to(1))
+
+    assert 1 not in pending
+
+
+async def test_flush_fails_waiting_request() -> None:
+    pending = PendingRequests()
+    future = pending.register(1)
+    error = RuntimeError()
+
+    pending.flush(error)
+
+    assert future.exception() is error

@@ -51,6 +51,10 @@ class FakeWebsocket:
         if self._reply is not None and (reply := self._reply(message)) is not None:
             self._incoming.put_nowait(reply)
 
+    def push(self, message: bytes) -> None:
+        """Receive the message, as when the Tydom sends it unprompted."""
+        self._incoming.put_nowait(message)
+
     async def __aiter__(self) -> AsyncIterator[bytes]:
         """Yield the scripted messages and replies, then end as websockets does."""
         while (message := await self._incoming.get()) is not None:
