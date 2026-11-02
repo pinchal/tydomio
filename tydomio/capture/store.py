@@ -2,15 +2,14 @@
 
 import json
 import os
-import re
 import shutil
 from collections.abc import Mapping
-from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Final, Literal
 
-from .anonymize import REDACTED, Anonymized
+from ..scrub import Secrets
+from .anonymize import Anonymized
 from .fetch import ENDPOINTS, EndpointResult, Outcome
 from .jsonvalue import JsonValue
 from .policy import RULES_VERSION
@@ -18,32 +17,6 @@ from .policy import RULES_VERSION
 FORMAT_VERSION: Final = 1
 MANIFEST_FILE: Final = "manifest.json"
 _WRITTEN: Final = (Outcome.OK, Outcome.HTTP_ERROR)
-
-
-@dataclass(frozen=True)
-class Secrets:
-    """The secrets of the run: the password, the IP and the MAC as 12 hex digits."""
-
-    password: str
-    ip: str | None
-    mac: str
-
-    def pattern(self) -> re.Pattern[str]:
-        """Match any secret, in any case, the MAC with or without separators.
-
-        The MAC alone in its last 6 digits too: the first 6 are the public vendor
-        prefix, the last 6 are unique to the box and appear in names (TYDOM-AABBCC).
-        """
-        mac = self.mac.lower()
-        # the full MAC first, so that scrub removes it whole
-        forms = [re.escape(self.password), "[:.-]?".join(mac), "[:.-]?".join(mac[-6:])]
-        if self.ip is not None:
-            forms.append(re.escape(self.ip))
-        return re.compile("|".join(forms), re.IGNORECASE)
-
-    def scrub(self, text: str) -> str:
-        """Replace every occurrence of the secrets with REDACTED."""
-        return self.pattern().sub(REDACTED, text)
 
 
 def find_secrets(

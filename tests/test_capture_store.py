@@ -9,13 +9,13 @@ from tydomio.capture.anonymize import anonymize
 from tydomio.capture.fetch import ENDPOINTS, EndpointResult, Outcome
 from tydomio.capture.jsonvalue import JsonValue
 from tydomio.capture.store import (
-    Secrets,
     build_manifest,
     create_directory,
     default_directory,
     find_secrets,
     write_capture,
 )
+from tydomio.scrub import Secrets
 
 CAPTURED_ON = date(2026, 3, 17)
 DOCUMENTS: dict[str, JsonValue] = {"info.json": {"body": 1}, "manifest.json": {}}
@@ -80,15 +80,6 @@ def test_clean_documents_give_no_secret() -> None:
     documents: JsonValue = {"body": {"productName": "TYWELL", "list": [1, None]}}
 
     assert find_secrets({"info.json": documents}, SECRETS) == []
-
-
-def test_scrub_replaces_every_secret() -> None:
-    text = "wss://192.0.2.77/?mac=00:11:22:aa:bb:cc TYDOM-AABBCC Invented-Pass-42"
-
-    assert (
-        SECRETS.scrub(text)
-        == "wss://<redacted>/?mac=<redacted> TYDOM-<redacted> <redacted>"
-    )
 
 
 @pytest.mark.parametrize(
