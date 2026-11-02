@@ -181,6 +181,9 @@ Stop, explain in plain words what was reached, and wait for the user:
   password from `TYDOM_PASSWORD` or a prompt. GET only, anonymized; it writes
   `./tydom-capture-<YYYYMM>-<hex>/` by default. It connects to the real box: ask the
   user first, and review the capture before sharing it.
+- Catalog: `uv run python -m tydomio.capture.catalog CAPTURE_DIR tests/usages.json`
+  merges the usage descriptors of a capture into the catalog the usage models are
+  tested against; on a conflict it writes nothing and exits 1. Review the diff.
 - Tests: `uv run coverage run -m pytest`, then `uv run coverage report`.
 
 ## Module map
@@ -197,6 +200,10 @@ Current state, kept up to date with each change.
 | `tydomio/response.py` | Responses from the Tydom, parsed by type | `model`, `error` |
 | `tydomio/model/config.py` | pydantic model of `/configs/file` | pydantic |
 | `tydomio/model/data.py` | pydantic model of `/devices/data` and `/areas/data` | pydantic |
+| `tydomio/model/usages/__init__.py` | `USAGES` registry, usage name to model, and `parse_usage` from the generic `Data` list (`None` for an unknown usage) | `model.data`, `model.usages.*` |
+| `tydomio/model/usages/base.py` | `Reading[T]` (value and validity), `TydomEnum` (unknown values kept as `str`, logged), `UsageModel` base with `from_data` and its `unknown` fields | `model.data`, `error`, pydantic, pydantic-core |
+| `tydomio/model/usages/thermic.py` | `ThermicZone`, the regulation fields and enums shared by a `boiler` heating zone and an area | `model.usages.base`, pydantic |
+| `tydomio/model/usages/<usage>.py` | Typed read model of one usage (`shutter`, `boiler`, `re2020_control_boiler`, `conso`, `sensor_sun`, `weather`) or of areas (`area`), with its enums | `model.usages.base`, pydantic; `boiler` and `area` also `model.usages.thermic` |
 | `tydomio/error.py` | Exception hierarchy (`TydomIoError`) | — |
 | `tydomio/globals.py` | `DEV_MODE` flag from the environment | — |
 | `tydomio/cli.py` | Temporary debug CLI to try the library on a real Tydom; not to be extended, the real CLI will be designed later | `client`, `requests` |
@@ -205,4 +212,5 @@ Current state, kept up to date with each change.
 | `tydomio/capture/policy.py` | Anonymization rules per endpoint, pure data, and their path parser | — |
 | `tydomio/capture/anonymize.py` | Pure anonymization of the bodies by the policy: id map, names, keys, keep constraints, report of redacted leaves and renamed keys | `capture.policy`, `capture.jsonvalue` |
 | `tydomio/capture/store.py` | What is written: manifest and envelopes, secrets scan (password, MAC, IP) and their scrubbing, output directory, owner-only files | `capture.fetch`, `capture.anonymize`, `capture.policy`, `capture.jsonvalue` |
+| `tydomio/capture/catalog.py` | Catalog of the field and command descriptors per usage, extracted from a capture and merged into `tests/usages.json` (enum values unioned, other differences are conflicts); `python -m` entry point | `error`, `capture.jsonvalue`, pydantic |
 | `tydomio/capture/cli.py` | `tydomio-capture` entry point: arguments, password, logging with its secret filter, DEV_MODE guard, refusal to write on a secret found, exit codes, summary | `client`, `globals`, `capture.*` |

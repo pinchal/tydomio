@@ -1,0 +1,1084 @@
+{
+  "@area": {
+    "commands": [],
+    "fields": [
+      {
+        "max": 327.66,
+        "min": -327.67,
+        "name": "ambientTemperature",
+        "permission": "r",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 65534,
+        "min": 0,
+        "name": "anticipCoeff",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "min/deg",
+        "validity": "INFINITE"
+      },
+      {
+        "enum_values": [
+          "HEATING",
+          "STOP"
+        ],
+        "name": "authorization",
+        "permission": "r",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "enum_values": [
+          "HEATING",
+          "STOP"
+        ],
+        "name": "comfortMode",
+        "permission": "w",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 50.0,
+        "min": 1.0,
+        "name": "heatSetpoint",
+        "permission": "rw",
+        "step": 0.5,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 100.0,
+        "min": 0.0,
+        "name": "hygroIn",
+        "permission": "r",
+        "step": 0.1,
+        "type": "numeric",
+        "unit": "%",
+        "validity": "INFINITE"
+      },
+      {
+        "enum_values": [
+          "ABSENCE",
+          "ANTI_FROST",
+          "NORMAL",
+          "STOP"
+        ],
+        "name": "localMode",
+        "permission": "rw",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 50.0,
+        "min": 1.0,
+        "name": "maxHeatSetpoint",
+        "permission": "r",
+        "step": 0.5,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 50.0,
+        "min": 1.0,
+        "name": "maxSetpoint",
+        "permission": "r",
+        "step": 0.5,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 50.0,
+        "min": 1.0,
+        "name": "minHeatSetpoint",
+        "permission": "r",
+        "step": 0.5,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 50.0,
+        "min": 1.0,
+        "name": "minSetpoint",
+        "permission": "r",
+        "step": 0.5,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "INFINITE"
+      },
+      {
+        "name": "openingDetected",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 720,
+        "min": 0,
+        "name": "overrideRemainingTime",
+        "permission": "rw",
+        "step": 1,
+        "type": "numeric",
+        "unit": "minute",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 50.0,
+        "min": 1.0,
+        "name": "overrideSetpoint",
+        "permission": "rw",
+        "step": 0.5,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "INFINITE"
+      },
+      {
+        "enum_values": [
+          "ANTI_FROST",
+          "STOP"
+        ],
+        "name": "overrideThermicLevel",
+        "permission": "rw",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 50.0,
+        "min": 1.0,
+        "name": "setpoint",
+        "permission": "rw",
+        "step": 0.5,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "INFINITE"
+      },
+      {
+        "enum_values": [
+          "ANTI_FROST",
+          "STOP"
+        ],
+        "name": "thermicLevel",
+        "permission": "rw",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "enum_values": [
+          "MANUAL",
+          "OVERRIDE",
+          "SCHED"
+        ],
+        "name": "useMode",
+        "permission": "rw",
+        "type": "string",
+        "validity": "INFINITE"
+      }
+    ]
+  },
+  "boiler": {
+    "commands": [],
+    "fields": [
+      {
+        "max": 99.9,
+        "min": -99.9,
+        "name": "ambientTemperature",
+        "permission": "rw",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "SENSOR_POLLING"
+      },
+      {
+        "enum_values": [
+          "HEATING",
+          "STOP"
+        ],
+        "name": "authorization",
+        "permission": "r",
+        "type": "string",
+        "validity": "STATUS_POLLING"
+      },
+      {
+        "name": "batteryCmdDefect",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "STATUS_POLLING"
+      },
+      {
+        "enum_values": [
+          "HEATING",
+          "STOP"
+        ],
+        "name": "comfortMode",
+        "permission": "w",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 50.0,
+        "min": 1.0,
+        "name": "heatSetpoint",
+        "permission": "rw",
+        "step": 0.5,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "INFINITE"
+      },
+      {
+        "name": "loadSheddingOn",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "STATUS_POLLING"
+      },
+      {
+        "enum_values": [
+          "ABSENCE",
+          "ANTI_FROST",
+          "NORMAL",
+          "STOP"
+        ],
+        "name": "localMode",
+        "permission": "rw",
+        "type": "string",
+        "validity": "DATA_POLLING"
+      },
+      {
+        "enum_values": [
+          "START"
+        ],
+        "name": "localisation",
+        "permission": "w",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 50.0,
+        "min": 1.0,
+        "name": "maxHeatSetpoint",
+        "permission": "r",
+        "step": 0.5,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 50.0,
+        "min": 1.0,
+        "name": "maxSetpoint",
+        "permission": "r",
+        "step": 0.5,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 50.0,
+        "min": 1.0,
+        "name": "minHeatSetpoint",
+        "permission": "r",
+        "step": 0.5,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 50.0,
+        "min": 1.0,
+        "name": "minSetpoint",
+        "permission": "r",
+        "step": 0.5,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "INFINITE"
+      },
+      {
+        "enum_values": [
+          "START"
+        ],
+        "name": "modeAsso",
+        "permission": "w",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "name": "openingDetected",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "STATUS_POLLING"
+      },
+      {
+        "max": 720,
+        "min": 0,
+        "name": "overrideRemainingTime",
+        "permission": "rw",
+        "step": 1,
+        "type": "numeric",
+        "unit": "minute",
+        "validity": "TIMER_POLLING"
+      },
+      {
+        "max": 50.0,
+        "min": 1.0,
+        "name": "overrideSetpoint",
+        "permission": "rw",
+        "step": 0.5,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "INFINITE"
+      },
+      {
+        "enum_values": [
+          "ANTI_FROST",
+          "STOP"
+        ],
+        "name": "overrideThermicLevel",
+        "permission": "rw",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "name": "productionDefect",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "STATUS_POLLING"
+      },
+      {
+        "max": 50.0,
+        "min": 1.0,
+        "name": "setpoint",
+        "permission": "rw",
+        "step": 0.5,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "DATA_POLLING"
+      },
+      {
+        "name": "tempSensorDefect",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "STATUS_POLLING"
+      },
+      {
+        "name": "tempSensorOpenCirc",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "STATUS_POLLING"
+      },
+      {
+        "name": "tempSensorShortCut",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "STATUS_POLLING"
+      },
+      {
+        "max": 99.9,
+        "min": -99.9,
+        "name": "temperature",
+        "permission": "r",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "SENSOR_POLLING"
+      },
+      {
+        "enum_values": [
+          "ANTI_FROST",
+          "STOP"
+        ],
+        "name": "thermicLevel",
+        "permission": "rw",
+        "type": "string",
+        "validity": "DATA_POLLING"
+      },
+      {
+        "enum_values": [
+          "MANUAL",
+          "OVERRIDE",
+          "SCHED"
+        ],
+        "name": "useMode",
+        "permission": "rw",
+        "type": "string",
+        "validity": "INFINITE"
+      }
+    ]
+  },
+  "conso": {
+    "commands": [
+      {
+        "name": "reset",
+        "parameters": [
+          {
+            "enum_values": [
+              "DHW",
+              "HEAT_ELEC",
+              "TI1",
+              "TI2",
+              "TI3",
+              "TOTAL_ELEC"
+            ],
+            "name": "station",
+            "type": "string"
+          },
+          {
+            "enum_values": [
+              "INTENSITY",
+              "POWER"
+            ],
+            "name": "measure",
+            "type": "string"
+          }
+        ],
+        "permission": "w"
+      }
+    ],
+    "fields": [
+      {
+        "max": 4294967294,
+        "min": 0,
+        "name": "energyIndexTi1",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "Wh",
+        "validity": "METER_POLLING"
+      },
+      {
+        "max": 327.66,
+        "min": 0.0,
+        "name": "energyInstantTi1I",
+        "permission": "r",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "A",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 327.66,
+        "min": 0.0,
+        "name": "energyInstantTi1I_Max",
+        "permission": "r",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "A",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 327.66,
+        "min": 0.0,
+        "name": "energyInstantTi1I_Min",
+        "permission": "r",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "A",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 65534,
+        "min": 0,
+        "name": "energyInstantTi1P",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "W",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 65534,
+        "min": 0,
+        "name": "energyInstantTi1P_Max",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "W",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 65534,
+        "min": 0,
+        "name": "energyInstantTi1P_Min",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "W",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 327.66,
+        "min": 0.0,
+        "name": "energyInstantTotElec",
+        "permission": "r",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "A",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 65534,
+        "min": 0,
+        "name": "energyInstantTotElecP",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "W",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 327.66,
+        "min": 0.0,
+        "name": "energyInstantTotElec_Max",
+        "permission": "r",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "A",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 327.66,
+        "min": 0.0,
+        "name": "energyInstantTotElec_Min",
+        "permission": "r",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "A",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 65534,
+        "min": 0,
+        "name": "energyInstantTotElec_P_Max",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "W",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 65534,
+        "min": 0,
+        "name": "energyInstantTotElec_P_Min",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "W",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 327.66,
+        "min": 0.0,
+        "name": "energyScaleTi1I_Max",
+        "permission": "r",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "A",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 327.66,
+        "min": 0.0,
+        "name": "energyScaleTi1I_Min",
+        "permission": "r",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "A",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 65534,
+        "min": 0,
+        "name": "energyScaleTi1P_Max",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "W",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 65534,
+        "min": 0,
+        "name": "energyScaleTi1P_Min",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "W",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 327.66,
+        "min": 0.0,
+        "name": "energyScaleTotElec_Max",
+        "permission": "r",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "A",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 327.66,
+        "min": 0.0,
+        "name": "energyScaleTotElec_Min",
+        "permission": "r",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "A",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 65534,
+        "min": 0,
+        "name": "energyScaleTotElec_P_Max",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "W",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 65534,
+        "min": 0,
+        "name": "energyScaleTotElec_P_Min",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "W",
+        "validity": "METER_INSTANT"
+      },
+      {
+        "max": 4294967294,
+        "min": 0,
+        "name": "energyTotIndexWatt",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "Wh",
+        "validity": "METER_POLLING"
+      },
+      {
+        "max": 4294967294,
+        "min": 0,
+        "name": "jobsMP",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "NA",
+        "validity": "INFINITE"
+      },
+      {
+        "enum_values": [
+          "WW.XX.YY.ZZ"
+        ],
+        "name": "softPlan",
+        "permission": "r",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "enum_values": [
+          "XX.YY.ZZ"
+        ],
+        "name": "softVersion",
+        "permission": "r",
+        "type": "string",
+        "validity": "INFINITE"
+      }
+    ]
+  },
+  "re2020ControlBoiler": {
+    "commands": [],
+    "fields": [
+      {
+        "max": 327.66,
+        "min": -327.67,
+        "name": "ambientTemperature",
+        "permission": "r",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "SENSOR_SUPERVISION"
+      },
+      {
+        "max": 2,
+        "min": 0,
+        "name": "battLevel",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "NA",
+        "validity": "ES_SUPERVISION"
+      },
+      {
+        "max": 100.0,
+        "min": 0.0,
+        "name": "hygroIn",
+        "permission": "r",
+        "step": 0.1,
+        "type": "numeric",
+        "unit": "%",
+        "validity": "SENSOR_SUPERVISION"
+      },
+      {
+        "name": "isReference",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 4294967294,
+        "min": 0,
+        "name": "jobs",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "NA",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 4294967294,
+        "min": 0,
+        "name": "jobsMP",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "NA",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 4294967294,
+        "min": 0,
+        "name": "jobsRM",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "NA",
+        "validity": "INFINITE"
+      },
+      {
+        "name": "name",
+        "permission": "w",
+        "size": 32,
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 254,
+        "min": 0,
+        "name": "nbRFActuators",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "NA",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 4,
+        "min": 0,
+        "name": "selectedProg",
+        "permission": "rw",
+        "step": 1,
+        "type": "numeric",
+        "unit": "NA",
+        "validity": "INFINITE"
+      },
+      {
+        "enum_values": [
+          "SEND"
+        ],
+        "name": "sendAsso",
+        "permission": "w",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 255,
+        "min": 0,
+        "name": "sendNetRemoteAssoMode",
+        "permission": "w",
+        "step": 1,
+        "type": "numeric",
+        "unit": "NA",
+        "validity": "INFINITE"
+      },
+      {
+        "enum_values": [
+          "DOWN",
+          "STOP",
+          "UP"
+        ],
+        "name": "shutterCmd",
+        "permission": "r",
+        "type": "string",
+        "validity": "REMOTE"
+      },
+      {
+        "enum_values": [
+          "WW.XX.YY.ZZ"
+        ],
+        "name": "softPlan",
+        "permission": "r",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "enum_values": [
+          "XX.YY.ZZ"
+        ],
+        "name": "softVersion",
+        "permission": "r",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "name": "synchroRadio",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "SYNCHRO_SUPERVISION"
+      },
+      {
+        "name": "uid",
+        "permission": "r",
+        "size": 32,
+        "type": "hexstring",
+        "validity": "INFINITE"
+      }
+    ]
+  },
+  "sensorSun": {
+    "commands": [],
+    "fields": [
+      {
+        "name": "battDefect",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 4294967294,
+        "min": 0,
+        "name": "configSensor",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "NA",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 4294967294,
+        "min": 0,
+        "name": "configTemp",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "NA",
+        "validity": "INFINITE"
+      },
+      {
+        "max": 65534,
+        "min": 0,
+        "name": "lightPower",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "W/m2",
+        "validity": "SENSOR_SUPERVISION"
+      }
+    ]
+  },
+  "shutter": {
+    "commands": [],
+    "fields": [
+      {
+        "name": "battDefect",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "ES_SUPERVISION"
+      },
+      {
+        "name": "downDefect",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "ES_SUPERVISION"
+      },
+      {
+        "name": "intrusion",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "ES_SUPERVISION"
+      },
+      {
+        "enum_values": [
+          "START"
+        ],
+        "name": "localisation",
+        "permission": "w",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "enum_values": [
+          "START"
+        ],
+        "name": "modeAsso",
+        "permission": "w",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "name": "obstacleDefect",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "ES_SUPERVISION"
+      },
+      {
+        "name": "onFavPos",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "ES_SUPERVISION"
+      },
+      {
+        "max": 100,
+        "min": 0,
+        "name": "position",
+        "permission": "rw",
+        "step": 1,
+        "type": "numeric",
+        "unit": "%",
+        "validity": "ES_SUPERVISION"
+      },
+      {
+        "enum_values": [
+          "DOWN",
+          "DOWN_SLOW",
+          "FAVORIT1",
+          "FAVORIT2",
+          "STOP",
+          "UP",
+          "UP_SLOW"
+        ],
+        "name": "positionCmd",
+        "permission": "w",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "enum_values": [
+          "FAVORIT1",
+          "FAVORIT2"
+        ],
+        "name": "recFav",
+        "permission": "w",
+        "type": "string",
+        "validity": "INFINITE"
+      },
+      {
+        "name": "thermicDefect",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "ES_SUPERVISION"
+      },
+      {
+        "name": "upDefect",
+        "permission": "r",
+        "type": "boolean",
+        "unit": "boolean",
+        "validity": "ES_SUPERVISION"
+      }
+    ]
+  },
+  "weather": {
+    "commands": [],
+    "fields": [
+      {
+        "max": 65534,
+        "min": 0,
+        "name": "currentPower",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "Wh/m2",
+        "validity": "SENSOR_SUPERVISION"
+      },
+      {
+        "max": 65534,
+        "min": 0,
+        "name": "dailyPower",
+        "permission": "r",
+        "step": 1,
+        "type": "numeric",
+        "unit": "Wh/m2",
+        "validity": "SENSOR_SUPERVISION"
+      },
+      {
+        "max": 327.66,
+        "min": -327.67,
+        "name": "maxDailyOutTemp",
+        "permission": "r",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "SENSOR_SUPERVISION"
+      },
+      {
+        "max": 327.66,
+        "min": -327.67,
+        "name": "outTemperature",
+        "permission": "r",
+        "step": 0.01,
+        "type": "numeric",
+        "unit": "degC",
+        "validity": "SENSOR_SUPERVISION"
+      },
+      {
+        "enum_values": [
+          "DAY_BROKEN_CLOUDS",
+          "DAY_CLEAR_SKY",
+          "DAY_FEW_CLOUDS",
+          "DAY_MIST",
+          "DAY_RAIN",
+          "DAY_SCATTERED_CLOUDS",
+          "DAY_SHOWER_RAIN",
+          "DAY_SNOW",
+          "DAY_THUNDERSTORM",
+          "NIGHT_BROKEN_CLOUDS",
+          "NIGHT_CLEAR_SKY",
+          "NIGHT_FEW_CLOUDS",
+          "NIGHT_MIST",
+          "NIGHT_RAIN",
+          "NIGHT_SCATTERED_CLOUDS",
+          "NIGHT_SHOWER_RAIN",
+          "NIGHT_SNOW",
+          "NIGHT_THUNDERSTORM",
+          "UNAVAILABLE"
+        ],
+        "name": "weather",
+        "permission": "r",
+        "type": "string",
+        "validity": "SENSOR_SUPERVISION"
+      }
+    ]
+  }
+}
