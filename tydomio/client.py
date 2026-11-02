@@ -332,9 +332,14 @@ class AsyncTydomClient:
             Response: The response object received for the given request.
 
         Raises:
-            RuntimeError: If the websocket connection is not established.
-            AssertionError: If a request with the same transaction_id already exists.
-            asyncio.TimeoutError: If the request times out.
+            TydomIoError: If the request has no transaction_id, or one already
+                pending.
+            CommunicationError: If the websocket connection is not established, is
+                closed while sending, or is lost while waiting for the response, or
+                if the request times out.
+            InvalidResponse: If the response cannot be parsed into the expected
+                type; a CommunicationError.
+            asyncio.CancelledError: If the task is cancelled while waiting.
 
         Notes:
             - The method ensures that the transaction_id of the request is unique
@@ -353,7 +358,7 @@ class AsyncTydomClient:
             raise TydomIoError("The request needs a unique transaction id")
 
         if self._websocket is None:
-            raise RuntimeError("Not connected")
+            raise CommunicationError("Not connected")
 
         future_response = self._pending_requests.register(request.transaction_id)
 
