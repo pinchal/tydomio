@@ -213,3 +213,23 @@ def test_tydom_request_rejects_content_not_matching_model() -> None:
 def test_tydom_request_rejects_invalid_json() -> None:
     with pytest.raises(InvalidRequest):
         TydomPutDevicesDataRequest("PUT", "/devices/data", {}, b"[")
+
+
+def test_json_request_error_carries_no_content() -> None:
+    with pytest.raises(InvalidRequest) as raised:
+        JsonRequest("PUT", "/a", JSON_HEADERS, b'{"room": "Kitchen"')
+
+    assert "Kitchen" not in str(raised.value)
+    # not chained: the decoding or validation error holds the content
+    assert raised.value.__cause__ is None
+
+
+def test_tydom_request_error_carries_no_value() -> None:
+    with pytest.raises(InvalidRequest) as raised:
+        TydomPutDevicesDataRequest(
+            "PUT", "/devices/data", {}, b'[{"id": "Kitchen", "endpoints": []}]'
+        )
+
+    assert "Kitchen" not in str(raised.value)
+    # not chained: the decoding or validation error holds the content
+    assert raised.value.__cause__ is None

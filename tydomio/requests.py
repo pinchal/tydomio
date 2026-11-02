@@ -106,8 +106,9 @@ class JsonRequest(Request):
             self.json_content = (
                 json.loads(self.content) if self.content is not None else None
             )
-        except json.JSONDecodeError as error:
-            raise InvalidRequest(self.content) from error
+        except json.JSONDecodeError:
+            # the decoding error holds the content: neither echoed nor chained
+            raise InvalidRequest("Content is not JSON") from None
 
         if DEV_MODE:
             file_name = f"request_{self.method}_{self.url.replace('/', '_')}.json"
@@ -143,8 +144,9 @@ class TydomRequest[DataModelT: pydantic.BaseModel](Request):
             self.data: Final[DataModelT] = data_model_type.model_validate_json(
                 self.content
             )
-        except pydantic.ValidationError as error:
-            raise InvalidRequest() from error
+        except pydantic.ValidationError:
+            # pydantic's error holds the received values: not chained
+            raise InvalidRequest(f"Invalid {data_model_type.__name__}") from None
 
 
 class TydomPutDevicesDataRequest(TydomRequest[DevicesData]):

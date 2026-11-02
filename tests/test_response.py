@@ -116,3 +116,39 @@ def test_json_response_rejects_other_content_type() -> None:
 def test_json_response_rejects_invalid_json() -> None:
     with pytest.raises(InvalidResponse):
         JsonResponse(Response(status=200, headers=JSON_HEADERS, content=b"{"))
+
+
+def test_json_response_error_carries_no_content() -> None:
+    with pytest.raises(InvalidResponse) as raised:
+        JsonResponse(
+            Response(status=200, headers=JSON_HEADERS, content=b'{"room": "Kitchen"')
+        )
+
+    assert "Kitchen" not in str(raised.value)
+    # not chained: the decoding or validation error holds the content
+    assert raised.value.__cause__ is None
+
+
+def test_json_response_status_error_carries_no_content() -> None:
+    with pytest.raises(InvalidResponse) as raised:
+        JsonResponse(
+            Response(status=404, headers=JSON_HEADERS, content=b'{"room": "Kitchen"}')
+        )
+
+    assert "Kitchen" not in str(raised.value)
+
+
+def test_config_response_error_carries_no_value() -> None:
+    with pytest.raises(InvalidResponse) as raised:
+        ConfigResponse(config_response(content=b'{"date": "Kitchen"}'))
+
+    assert "Kitchen" not in str(raised.value)
+    # not chained: the decoding or validation error holds the content
+    assert raised.value.__cause__ is None
+
+
+def test_ok_error_carries_no_content() -> None:
+    with pytest.raises(InvalidResponse) as raised:
+        Ok(Response(status=500, headers={}, content=b'{"room": "Kitchen"}'))
+
+    assert "Kitchen" not in str(raised.value)
