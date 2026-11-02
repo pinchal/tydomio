@@ -196,7 +196,7 @@ Current state, kept up to date with each change.
 | `tydomio/protocol.py` | Conversion of the bytes received on the websocket into messages: prefix, start line, headers, chunked content | `requests`, `response`, `error` |
 | `tydomio/pending_requests.py` | `PendingRequests`: futures of the requests waiting for a response, matched by transaction id | `response` |
 | `tydomio/network.py` | Thin adapters to the real network: TLS context, digest authorization (httpx), websocket connection (websockets); excluded from coverage | `error`, httpx, websockets |
-| `tydomio/requests.py` | Requests sent by the client, with their serialization to bytes, including the typed writes `WriteEndpoint`, `WriteGroup` and `WriteArea` (target and write model checked, revalidated, JSON body, names-only INFO log when sent, through `ClientRequest.log_sending`), and requests pushed by the Tydom | `response`, `installation`, `model`, `error`, `globals` |
+| `tydomio/requests.py` | Requests sent by the client, with their serialization to bytes, including the typed writes `WriteEndpoint`, `WriteGroup` and `WriteArea` (target and write model checked, revalidated, JSON body, names-only INFO log when sent, through `ClientRequest.log_sending`), and requests pushed by the Tydom | `response`, `installation`, `model`, `error` |
 | `tydomio/response.py` | Responses from the Tydom, parsed by type | `model`, `error` |
 | `tydomio/installation.py` | `Installation` from `/configs/file`: usage per (device id, endpoint id) and per group id, and area ids; hands out `EndpointRef[U]`, `GroupRef[U]` and `AreaRef` (int ids, usage checked), and types one endpoint or area of pushed data | `model`, `error` |
 | `tydomio/model/config.py` | pydantic model of `/configs/file` | pydantic |
@@ -206,7 +206,6 @@ Current state, kept up to date with each change.
 | `tydomio/model/usages/thermic.py` | `ThermicZone` and `ThermicWrite`, the regulation fields read and written, and their enums, shared by a `boiler` heating zone and an area | `model.usages.base`, pydantic |
 | `tydomio/model/usages/<usage>.py` | Typed read model of one usage (`shutter`, `boiler`, `re2020_control_boiler`, `conso`, `sensor_sun`, `weather`) or of areas (`area`), with its enums, and its write model when it may be written (`ShutterWrite`, `BoilerWrite`, `Re2020ControlBoilerWrite`, `AreaWrite`) | `model.usages.base`, pydantic; `boiler` and `area` also `model.usages.thermic` |
 | `tydomio/error.py` | Exception hierarchy (`TydomIoError`) | — |
-| `tydomio/globals.py` | `DEV_MODE` flag from the environment | — |
 | `tydomio/cli.py` | Temporary debug CLI to try the library on a real Tydom; not to be extended, the real CLI will be designed later | `client`, `requests` |
 | `tydomio/capture/jsonvalue.py` | `JsonValue` and the strict JSON parser (UTF-8, no NaN or Infinity, depth 64) | `error` |
 | `tydomio/capture/fetch.py` | Endpoint table, read-only `Fetcher` connection routine, `run_capture` with its deadline | `client`, `requests`, `response`, `error`, `capture.jsonvalue` |
@@ -214,4 +213,4 @@ Current state, kept up to date with each change.
 | `tydomio/capture/anonymize.py` | Pure anonymization of the bodies by the policy: id map, names, keys, keep constraints, report of redacted leaves and renamed keys | `capture.policy`, `capture.jsonvalue` |
 | `tydomio/capture/store.py` | What is written: manifest and envelopes, secrets scan (password, MAC, IP) and their scrubbing, output directory, owner-only files | `capture.fetch`, `capture.anonymize`, `capture.policy`, `capture.jsonvalue` |
 | `tydomio/capture/catalog.py` | Catalog of the field and command descriptors per usage, extracted from a capture and merged into `tests/usages.json` (enum values unioned, other differences are conflicts); `python -m` entry point | `error`, `capture.jsonvalue`, pydantic |
-| `tydomio/capture/cli.py` | `tydomio-capture` entry point: arguments, password, logging with its secret filter, DEV_MODE guard, refusal to write on a secret found, exit codes, summary | `client`, `globals`, `capture.*` |
+| `tydomio/capture/cli.py` | `tydomio-capture` entry point: arguments, password, logging with its secret filter, refusal to write on a secret found, exit codes, summary | `client`, `capture.*` |

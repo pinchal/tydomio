@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 import tydomio.capture.cli
-import tydomio.globals
 import tydomio.network
 from tests.conftest import (
     AUTHORIZATION,
@@ -163,17 +162,6 @@ def test_an_existing_output_directory_gives_status_2_without_connecting(
     connection_factory = FakeConnectionFactory()
 
     status = capture(tmp_path, connection_factory)
-
-    assert (status, connection_factory.authorizations) == (2, [])
-
-
-def test_dev_mode_gives_status_2_without_connecting(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(tydomio.globals, "DEV_MODE", True)
-    connection_factory = FakeConnectionFactory()
-
-    status = capture(tmp_path / "capture", connection_factory)
 
     assert (status, connection_factory.authorizations) == (2, [])
 

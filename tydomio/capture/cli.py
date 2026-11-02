@@ -14,8 +14,6 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Final, override
 
-import tydomio.globals
-
 from ..client import AsyncTydomClient, AuthorizationProvider, ConnectionFactory, Sleep
 from .anonymize import Anonymized, anonymize
 from .fetch import (
@@ -211,10 +209,6 @@ def main(
 ) -> int:
     """Capture the endpoints; 0 complete, 1 partial, 2 nothing written."""
     args = _parse(argv)
-    # read at call time: requests and response dump raw JSON in DEV_MODE
-    if tydomio.globals.DEV_MODE:
-        print("tydomio-capture: refused with DEV_MODE on", file=sys.stderr)
-        return EXIT_NOTHING_WRITTEN
     try:
         secrets_ = _secrets(args)
     except _Failure as failure:
