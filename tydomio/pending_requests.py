@@ -27,17 +27,26 @@ class PendingRequests:
         return future
 
     def resolve(self, response: Response) -> bool:
-        """Give the response to the request waiting for it, False if none waits."""
-        transac_id = response.transac_id
-        if transac_id not in self._futures:
+        """Give the response to the request waiting for it, False if none waits.
+
+        A request whose future is already done, i.e. cancelled with its waiting
+        task, waits no more: it is forgotten and the response dropped.
+        """
+        future = self._futures.pop(response.transac_id, None)
+        if future is None or future.done():
             return False
-        self._futures[transac_id].set_result(response)
-        del self._futures[transac_id]
+        future.set_result(response)
         return True
 
-    def abandon(self, transaction_id: int) -> None:
-        """Stop waiting for the response to this request."""
-        del self._futures[transaction_id]
+    def abandon(self, transaction_id: int, future: asyncio.Future[Response]) -> None:
+        """Stop waiting for the response to this request, if it still waits.
+
+        The future identifies the request: once resolved or flushed, its
+        transaction id may have been registered again by another request, which
+        is left pending.
+        """
+        if self._futures.get(transaction_id) is future:
+            del self._futures[transaction_id]
 
     def flush(self, error: Exception) -> None:
         """Fail every pending request with the error, then forget them.

@@ -420,6 +420,62 @@ async def test_send_raises_communication_error_when_connection_closed() -> None:
     assert isinstance(outcome, CommunicationError)
 
 
+async def start_unanswered_send(
+    request: PingRequest,
+) -> tuple[AsyncTydomClient, FakeWebsocket, asyncio.Task[None], asyncio.Task[Ok]]:
+    """Connect a client and send it the request, which gets no response.
+
+    Gives the client, its websocket, the running connection and the sending, once
+    the request is sent.
+    """
+    request_sent = asyncio.Event()
+
+    def reply(message: bytes) -> bytes | None:
+        if message == request.to_bytes(cmd_prefix=b""):
+            request_sent.set()
+            return None
+        return ok_reply(message)
+
+    websocket = FakeWebsocket(reply=reply)
+    connection_factory = FakeConnectionFactory(websocket)
+    client = make_client_with_doubles(connection_factory)
+    run = asyncio.create_task(run_until_script_ends(client))
+    await connection_factory.connected.wait()
+    sending = asyncio.create_task(client.send(request))
+    await request_sent.wait()
+    return client, websocket, run, sending
+
+
+async def test_send_cancelled_while_waiting_leaves_no_pending_request() -> None:
+    request = PingRequest()
+    client, _websocket, run, sending = await start_unanswered_send(request)
+
+    sending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await sending
+
+    assert client.get_number_of_requests_in_progress() == 0
+    run.cancel()
+    await asyncio.gather(run, return_exceptions=True)
+
+
+async def test_response_after_cancelled_send_is_dropped_and_reading_goes_on() -> None:
+    request = PingRequest()
+    client, websocket, run, sending = await start_unanswered_send(request)
+    sending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await sending
+
+    websocket.push(ok_reply(request.to_bytes(cmd_prefix=b"")))
+    async with asyncio.timeout(1):
+        response = await client.send(PingRequest())
+
+    assert isinstance(response, Ok)
+    assert not run.done()
+    run.cancel()
+    await asyncio.gather(run, return_exceptions=True)
+
+
 @pytest.mark.parametrize(
     ("message", "request_type"),
     [
