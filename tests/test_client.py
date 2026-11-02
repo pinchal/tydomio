@@ -161,7 +161,7 @@ async def test_send_rejects_request_without_transaction_id() -> None:
 
 
 async def test_send_requires_connection() -> None:
-    with pytest.raises(RuntimeError):
+    with pytest.raises(CommunicationError):
         await make_client().send(PingRequest())
 
 
