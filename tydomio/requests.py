@@ -2,6 +2,7 @@
 
 import itertools
 import json
+import logging
 import secrets
 from abc import ABC
 from dataclasses import dataclass, field
@@ -10,9 +11,12 @@ from typing import Final
 
 import pydantic
 
-from .error import InvalidRequest
+from .error import InvalidRequest, InvalidTarget
 from .globals import DEV_MODE
+from .installation import AreaRef, EndpointRef
 from .model.data import AreasData, DevicesData
+from .model.usages import WRITES, Area, UsageModel, UsageWrite
+from .model.usages.area import AreaWrite
 from .response import (
     ConfigResponse,
     Ok,
@@ -22,6 +26,7 @@ from .response import (
 )
 
 _MODULE_DIRECTORY_PATH = Path(__file__).parent.resolve()
+LOGGER = logging.getLogger(__name__)
 
 TRANSACTION_COUNTER = itertools.count(secrets.randbelow(100000000) + 1)
 
@@ -251,3 +256,52 @@ class RefreshAll(ClientRequest[Ok]):
             method="POST",
             url="/refresh/all",
         )
+
+
+class _Write(ClientRequest[Ok]):
+    """A PUT of the fields of a write model, acknowledged by an empty 200."""
+
+    response_type = Ok
+
+    def __init__(
+        self, url: str, usage: type[UsageModel], write: UsageWrite[UsageModel]
+    ) -> None:
+        """Check the write fits the usage, revalidate it, serialize it to JSON."""
+        if WRITES.get(usage) is not type(write):
+            raise InvalidTarget(
+                f"{type(write).__name__} does not write to a {usage.__name__}"
+            )
+        # revalidated: model_construct and model_copy skip the bounds
+        body = type(write).model_validate(dict(write)).body()
+        LOGGER.info(
+            "Write to a %s: %s",
+            usage.__name__,
+            ", ".join(str(item["name"]) for item in body),
+        )
+        LOGGER.debug("Write values %s", body)
+        super().__init__(
+            method="PUT",
+            url=url,
+            headers={"Content-Type": "application/json; charset=UTF-8"},
+            content=json.dumps(body, allow_nan=False).encode(),
+        )
+
+
+class WriteEndpoint[U: UsageModel](_Write):
+    """ClientRequest writing fields of an endpoint."""
+
+    def __init__(self, ref: EndpointRef[U], write: UsageWrite[U]) -> None:
+        """Write to the endpoint of the reference."""
+        super().__init__(
+            f"/devices/{ref.device_id}/endpoints/{ref.endpoint_id}/data",
+            ref.usage,
+            write,
+        )
+
+
+class WriteArea(_Write):
+    """ClientRequest writing fields of an area."""
+
+    def __init__(self, ref: AreaRef, write: AreaWrite) -> None:
+        """Write to the area of the reference."""
+        super().__init__(f"/areas/{ref.area_id}/data", Area, write)

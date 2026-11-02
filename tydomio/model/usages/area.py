@@ -3,7 +3,7 @@
 from pydantic import Field
 
 from .base import Reading
-from .thermic import ThermicZone
+from .thermic import ThermicWrite, ThermicZone
 
 
 class Area(ThermicZone):
@@ -11,3 +11,7 @@ class Area(ThermicZone):
 
     anticip_coeff: Reading[float] | None = Field(default=None, alias="anticipCoeff")
     hygro_in: Reading[float] | None = Field(default=None, alias="hygroIn")
+
+
+class AreaWrite(ThermicWrite[Area]):
+    """Fields written to a heating area."""

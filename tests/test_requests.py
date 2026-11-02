@@ -1,12 +1,22 @@
+import json
+import logging
+
 import pytest
 
-from tydomio.error import InvalidRequest
+from tydomio.error import InvalidRequest, InvalidTarget, InvalidWrite
+from tydomio.installation import AreaRef, EndpointRef
+from tydomio.model.usages import UsageModel
+from tydomio.model.usages.area import AreaWrite
+from tydomio.model.usages.boiler import Boiler, BoilerWrite
+from tydomio.model.usages.shutter import Shutter, ShutterWrite
 from tydomio.requests import (
     JsonRequest,
     PingRequest,
     Request,
     TydomPutAreasDataRequest,
     TydomPutDevicesDataRequest,
+    WriteArea,
+    WriteEndpoint,
 )
 from tydomio.response import Ok, Response
 
@@ -233,3 +243,63 @@ def test_tydom_request_error_carries_no_value() -> None:
     assert "Kitchen" not in str(raised.value)
     # not chained: the decoding or validation error holds the content
     assert raised.value.__cause__ is None
+
+
+# writes are only built here, never sent: heating ones included
+SHUTTER = EndpointRef(10, 1, Shutter)
+
+
+def test_write_endpoint_puts_to_the_device_and_endpoint_of_the_ref() -> None:
+    request = WriteEndpoint(EndpointRef(20, 1, Boiler), BoilerWrite(setpoint=19.5))
+
+    assert (request.method, request.url) == ("PUT", "/devices/20/endpoints/1/data")
+
+
+def test_write_area_puts_to_the_area_of_the_ref() -> None:
+    request = WriteArea(AreaRef(7), AreaWrite(setpoint=19.5))
+
+    assert (request.method, request.url) == ("PUT", "/areas/7/data")
+
+
+def test_write_content_is_the_json_body_of_the_fields_set() -> None:
+    request = WriteEndpoint(SHUTTER, ShutterWrite(position=42))
+
+    assert request.content is not None
+    assert json.loads(request.content) == [{"name": "position", "value": 42}]
+
+
+def test_write_is_sent_as_json() -> None:
+    raw = WriteEndpoint(SHUTTER, ShutterWrite(position=42)).to_bytes(cmd_prefix=b"")
+
+    assert b"Content-Type: application/json; charset=UTF-8" in header_lines(raw)
+
+
+def test_write_of_another_usage_is_refused() -> None:
+    # a ref typed loosely, as a caller without types holds it
+    ref = EndpointRef[UsageModel](10, 1, Shutter)
+
+    with pytest.raises(InvalidTarget):
+        WriteEndpoint(ref, BoilerWrite(setpoint=19.5))
+
+
+def test_write_skipping_validation_is_validated_again() -> None:
+    with pytest.raises(InvalidWrite):
+        WriteEndpoint(SHUTTER, ShutterWrite.model_construct(position=500))
+
+
+def test_write_logs_no_value_above_debug(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.DEBUG):
+        WriteEndpoint(SHUTTER, ShutterWrite(position=42))
+
+    assert [r.getMessage() for r in caplog.records if r.levelno > logging.DEBUG] == [
+        "Write to a Shutter: position"
+    ]
+
+
+def test_write_logs_its_values_at_debug(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.DEBUG):
+        WriteEndpoint(SHUTTER, ShutterWrite(position=42))
+
+    assert any(
+        "42" in r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG
+    )

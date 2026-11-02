@@ -1,12 +1,21 @@
 """Thermal regulation: enums and fields shared by heating zones and areas."""
 
+from typing import Annotated
+
 from pydantic import Field
 
-from .base import Reading, TydomEnum, UsageModel
+from .base import Reading, TydomEnum, UsageModel, UsageWrite, member_of
 
 
 class Authorization(TydomEnum):
     """Values of `authorization`."""
+
+    HEATING = "HEATING"
+    STOP = "STOP"
+
+
+class ComfortMode(TydomEnum):
+    """Values of `comfortMode`."""
 
     HEATING = "HEATING"
     STOP = "STOP"
@@ -22,7 +31,7 @@ class LocalMode(TydomEnum):
 
 
 class ThermicLevel(TydomEnum):
-    """Values of `overrideThermicLevel`."""
+    """Values of `thermicLevel` and `overrideThermicLevel`."""
 
     ANTI_FROST = "ANTI_FROST"
     STOP = "STOP"
@@ -72,3 +81,35 @@ class ThermicZone(UsageModel):
         default=None, alias="thermicLevel"
     )
     use_mode: Reading[UseMode | str] | None = Field(default=None, alias="useMode")
+
+
+class ThermicWrite[U: ThermicZone](UsageWrite[U]):
+    """Regulation fields written to a `boiler` heating zone or an area."""
+
+    comfort_mode: Annotated[ComfortMode, member_of(ComfortMode)] | None = Field(
+        default=None, alias="comfortMode"
+    )
+    heat_setpoint: float | None = Field(
+        default=None, alias="heatSetpoint", ge=1, le=50, multiple_of=0.5
+    )
+    local_mode: Annotated[LocalMode, member_of(LocalMode)] | None = Field(
+        default=None, alias="localMode"
+    )
+    override_remaining_time: int | None = Field(
+        default=None, alias="overrideRemainingTime", ge=0, le=720
+    )
+    override_setpoint: float | None = Field(
+        default=None, alias="overrideSetpoint", ge=1, le=50, multiple_of=0.5
+    )
+    override_thermic_level: Annotated[ThermicLevel, member_of(ThermicLevel)] | None = (
+        Field(default=None, alias="overrideThermicLevel")
+    )
+    setpoint: float | None = Field(
+        default=None, alias="setpoint", ge=1, le=50, multiple_of=0.5
+    )
+    thermic_level: Annotated[ThermicLevel, member_of(ThermicLevel)] | None = Field(
+        default=None, alias="thermicLevel"
+    )
+    use_mode: Annotated[UseMode, member_of(UseMode)] | None = Field(
+        default=None, alias="useMode"
+    )

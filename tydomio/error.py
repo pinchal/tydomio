@@ -19,3 +19,11 @@ class InvalidRequest(CommunicationError):
 
 class AuthorizationError(CommunicationError):
     """Exception raised when the authorization cannot be obtained from Tydom."""
+
+
+class InvalidTarget(TydomIoError):
+    """Exception raised for an endpoint or area unknown or not of the usage expected."""
+
+
+class InvalidWrite(TydomIoError):
+    """Exception raised for a write refused before it is sent."""

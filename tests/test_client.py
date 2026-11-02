@@ -26,11 +26,15 @@ from tydomio.client import (
     TydomRequestHandler,
 )
 from tydomio.error import AuthorizationError, CommunicationError, TydomIoError
+from tydomio.installation import EndpointRef
+from tydomio.model.usages.shutter import Shutter, ShutterWrite
 from tydomio.requests import (
+    ClientRequest,
     PingRequest,
     TydomPutAreasDataRequest,
     TydomPutDevicesDataRequest,
     TydomRequest,
+    WriteEndpoint,
 )
 from tydomio.response import Ok
 
@@ -88,9 +92,9 @@ def ok_reply(sent: bytes) -> bytes:
 
 async def send_once_connected(
     websocket: FakeWebsocket,
-    request: PingRequest,
+    request: ClientRequest[Ok],
     timeout: int | None = None,
-    send: Callable[[AsyncTydomClient, PingRequest], Awaitable[Ok]] | None = None,
+    send: Callable[[AsyncTydomClient, ClientRequest[Ok]], Awaitable[Ok]] | None = None,
 ) -> Ok | TydomIoError:
     """Send the request from a connection routine, give its response or error.
 
@@ -383,7 +387,7 @@ async def test_send_accepts_again_a_request_whose_sending_failed() -> None:
             raise ConnectionClosed(None, None)
         return ok_reply(sent)
 
-    async def send_twice(client: AsyncTydomClient, request: PingRequest) -> Ok:
+    async def send_twice(client: AsyncTydomClient, request: ClientRequest[Ok]) -> Ok:
         with suppress(CommunicationError):
             await client.send(request)
         return await client.send(request)
@@ -697,3 +701,64 @@ async def test_ping_sends_a_ping_then_waits_the_ping_interval() -> None:
 
     assert websocket.sent[0].startswith(b"GET /ping ")
     assert (delays_at_each_send[0], sleep.delays[0]) == (0, 7)
+
+
+def shutter_write() -> WriteEndpoint[Shutter]:
+    return WriteEndpoint(EndpointRef(10, 1, Shutter), ShutterWrite(position=42))
+
+
+def start_lines(*websockets: FakeWebsocket) -> list[bytes]:
+    return [sent.split(b"\r\n")[0] for ws in websockets for sent in ws.sent]
+
+
+async def test_connection_reconnection_and_pushes_send_nothing_but_pings() -> None:
+    websockets = [
+        FakeWebsocket(
+            put("/devices/data", DEVICES_DATA), reply=ok_reply, closed_by_tydom=True
+        )
+        for _ in range(2)
+    ]
+    client = make_client_with_doubles(FakeConnectionFactory(*websockets))
+    client.subscribe(TydomRequest, Recorder())
+
+    async with asyncio.timeout(1):
+        await run_until_script_ends(client)
+
+    assert set(start_lines(*websockets)) == {b"GET /ping HTTP/1.1"}
+
+
+async def test_write_lost_with_the_connection_is_not_resent() -> None:
+    def lose_after_write(sent: bytes) -> bytes | None:
+        if sent.startswith(b"PUT "):
+            return None  # the acknowledgement never comes
+        if any(message.startswith(b"PUT ") for message in first.sent):
+            raise ConnectionClosed(None, None)
+        return ok_reply(sent)
+
+    first = FakeWebsocket(reply=lose_after_write)
+    second = FakeWebsocket(reply=ok_reply, closed_by_tydom=True)
+    connection_factory = FakeConnectionFactory(first, second)
+    client = make_client_with_doubles(connection_factory)
+    run = asyncio.create_task(run_until_script_ends(client))
+    await connection_factory.connected.wait()
+
+    async with asyncio.timeout(1):
+        with pytest.raises(CommunicationError):
+            await client.send(shutter_write())
+        await run
+
+    assert [line for line in start_lines(first, second) if b"PUT" in line] == [
+        b"PUT /devices/10/endpoints/1/data HTTP/1.1"
+    ]
+
+
+async def test_write_timeout_raises_after_a_single_request() -> None:
+    def ignore_writes(sent: bytes) -> bytes | None:
+        return None if sent.startswith(b"PUT ") else ok_reply(sent)
+
+    websocket = FakeWebsocket(reply=ignore_writes)
+
+    outcome = await send_once_connected(websocket, shutter_write(), timeout=0)
+
+    assert isinstance(outcome, CommunicationError)
+    assert sum(line.startswith(b"PUT ") for line in start_lines(websocket)) == 1
