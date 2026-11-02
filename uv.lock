@@ -655,6 +655,7 @@ source = { editable = "." }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
+    { name = "pydantic-core" },
     { name = "websockets" },
 ]
 
@@ -672,6 +673,7 @@ dev = [
 requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "pydantic", specifier = ">=2.12" },
+    { name = "pydantic-core", specifier = ">=2.50.2" },
     { name = "websockets", specifier = ">=14" },
 ]
 
