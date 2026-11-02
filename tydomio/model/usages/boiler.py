@@ -3,7 +3,7 @@
 from pydantic import Field
 
 from .base import Reading
-from .thermic import ThermicZone
+from .thermic import ThermicWrite, ThermicZone
 
 
 class Boiler(ThermicZone):
@@ -26,3 +26,7 @@ class Boiler(ThermicZone):
         default=None, alias="tempSensorShortCut"
     )
     temperature: Reading[float] | None = Field(default=None, alias="temperature")
+
+
+class BoilerWrite(ThermicWrite[Boiler]):
+    """Fields written to a heating zone."""

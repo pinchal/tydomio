@@ -2,7 +2,7 @@
 
 from pydantic import Field
 
-from .base import Reading, TydomEnum, UsageModel
+from .base import Reading, TydomEnum, UsageModel, UsageWrite
 
 
 class ShutterCmd(TydomEnum):
@@ -34,3 +34,9 @@ class Re2020ControlBoiler(UsageModel):
     soft_version: Reading[str] | None = Field(default=None, alias="softVersion")
     synchro_radio: Reading[bool] | None = Field(default=None, alias="synchroRadio")
     uid: Reading[str] | None = Field(default=None, alias="uid")
+
+
+class Re2020ControlBoilerWrite(UsageWrite[Re2020ControlBoiler]):
+    """Fields written to a RE2020 room thermostat."""
+
+    selected_prog: int | None = Field(default=None, alias="selectedProg", ge=0, le=4)
