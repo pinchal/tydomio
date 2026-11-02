@@ -6,13 +6,11 @@ import logging
 import secrets
 from abc import ABC
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Final, override
 
 import pydantic
 
 from .error import InvalidRequest, InvalidTarget
-from .globals import DEV_MODE
 from .installation import AreaRef, EndpointRef, GroupRef
 from .model.data import AreasData, DevicesData
 from .model.usages import WRITES, Area, UsageModel, UsageWrite
@@ -25,7 +23,6 @@ from .response import (
     has_json_content,
 )
 
-_MODULE_DIRECTORY_PATH = Path(__file__).parent.resolve()
 LOGGER = logging.getLogger(__name__)
 
 TRANSACTION_COUNTER = itertools.count(secrets.randbelow(100000000) + 1)
@@ -114,12 +111,6 @@ class JsonRequest(Request):
         except json.JSONDecodeError:
             # the decoding error holds the content: neither echoed nor chained
             raise InvalidRequest("Content is not JSON") from None
-
-        if DEV_MODE:
-            file_name = f"request_{self.method}_{self.url.replace('/', '_')}.json"
-            file_path = _MODULE_DIRECTORY_PATH / file_name
-            with open(file_path, "w", encoding="utf-8") as file:
-                json.dump(self.json_content, file, indent=4, ensure_ascii=False)
 
 
 class TydomRequest[DataModelT: pydantic.BaseModel](Request):

@@ -51,7 +51,7 @@ DEADLINE: Final = CONNECT_BUDGET + len(ENDPOINTS) * REQUEST_TIMEOUT + 20
 
 
 class _RawResponse(Response):
-    """Any status, raw bytes; not a JsonResponse, which dumps content in DEV_MODE."""
+    """Any status, raw bytes; not a JsonResponse, which needs JSON content."""
 
     def __init__(self, response: Response) -> None:
         """Keep the response as received."""

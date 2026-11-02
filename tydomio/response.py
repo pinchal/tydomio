@@ -2,17 +2,14 @@
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Protocol
 
 import pydantic
 
 from .error import InvalidResponse
-from .globals import DEV_MODE
 from .model import config as config_mdl
 
 _STATUS_CODE_OK = 200
-_MODULE_DIRECTORY_PATH = Path(__file__).parent.resolve()
 
 
 def has_json_content(headers: dict[str, str]) -> bool:
@@ -81,13 +78,6 @@ class JsonResponse(Response):
         except json.JSONDecodeError:
             # the decoding error holds the content: neither echoed nor chained
             raise InvalidResponse("Content is not JSON") from None
-
-        if DEV_MODE:
-            origin = self.headers.get("uri-origin", "no-origin")
-            file_name = f"{origin.replace('/', '_')}.json"
-            file_path = _MODULE_DIRECTORY_PATH / file_name
-            with open(file_path, "w", encoding="utf-8") as file:
-                json.dump(self.json_content, file, indent=4, ensure_ascii=False)
 
 
 class Ok(Response):
