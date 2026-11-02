@@ -196,7 +196,7 @@ Current state, kept up to date with each change.
 | `tydomio/protocol.py` | Conversion of the bytes received on the websocket into messages: prefix, start line, headers, chunked content | `requests`, `response`, `error` |
 | `tydomio/pending_requests.py` | `PendingRequests`: futures of the requests waiting for a response, matched by transaction id | `response` |
 | `tydomio/network.py` | Thin adapters to the real network: TLS context, digest authorization (httpx), websocket connection (websockets); excluded from coverage | `error`, httpx, websockets |
-| `tydomio/requests.py` | Requests sent by the client, with their serialization to bytes, including the typed writes `WriteEndpoint`, `WriteGroup` and `WriteArea` (target and write model checked, revalidated, JSON body, names-only INFO log), and requests pushed by the Tydom | `response`, `installation`, `model`, `error`, `globals` |
+| `tydomio/requests.py` | Requests sent by the client, with their serialization to bytes, including the typed writes `WriteEndpoint`, `WriteGroup` and `WriteArea` (target and write model checked, revalidated, JSON body, names-only INFO log when sent, through `ClientRequest.log_sending`), and requests pushed by the Tydom | `response`, `installation`, `model`, `error`, `globals` |
 | `tydomio/response.py` | Responses from the Tydom, parsed by type | `model`, `error` |
 | `tydomio/installation.py` | `Installation` from `/configs/file`: usage per (device id, endpoint id) and per group id, and area ids; hands out `EndpointRef[U]`, `GroupRef[U]` and `AreaRef` (int ids, usage checked), and types one endpoint or area of pushed data | `model`, `error` |
 | `tydomio/model/config.py` | pydantic model of `/configs/file` | pydantic |

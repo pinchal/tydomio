@@ -104,11 +104,14 @@ Tests: `test_response.py::test_ok_error_carries_no_content`;
 
 ### Logs leaking values
 
-Building a write logs the usage and the field names at INFO; the values go to DEBUG
-only.
+A write is logged when the client sends it, not when it is built, so a write refused
+before reaching the wire (not connected, duplicate transaction id) is not logged. INFO
+gets the usage and the field names; the values go to DEBUG only.
 
-Tests: `test_requests.py::test_write_logs_no_value_above_debug`,
-`test_write_logs_its_values_at_debug`.
+Tests: `test_requests.py::test_building_a_write_logs_nothing`,
+`test_write_logs_no_value_above_debug`, `test_write_logs_its_values_at_debug`;
+`test_client.py::test_sent_write_logs_its_field_names_without_values`,
+`test_write_refused_when_not_connected_is_not_logged`.
 
 ## Not exposed
 

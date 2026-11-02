@@ -367,6 +367,7 @@ class AsyncTydomClient:
             type(request).__name__,
             request.transaction_id,
         )
+        request.log_sending()
         try:
             await self._websocket.send(request.to_bytes(cmd_prefix=self._cmd_prefix))
         except ConnectionClosed as error:
