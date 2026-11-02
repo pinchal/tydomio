@@ -27,7 +27,12 @@ class Shutter(UsageModel):
     intrusion: Reading[bool] | None = Field(default=None, alias="intrusion")
     obstacle_defect: Reading[bool] | None = Field(default=None, alias="obstacleDefect")
     on_fav_pos: Reading[bool] | None = Field(default=None, alias="onFavPos")
-    position: Reading[float] | None = Field(default=None, alias="position")
+    position: Reading[float] | None = Field(
+        default=None,
+        alias="position",
+        description="0 = closed, 100 = open",
+        json_schema_extra={"unit": "%"},
+    )
     thermic_defect: Reading[bool] | None = Field(default=None, alias="thermicDefect")
     up_defect: Reading[bool] | None = Field(default=None, alias="upDefect")
 

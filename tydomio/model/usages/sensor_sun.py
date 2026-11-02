@@ -11,4 +11,6 @@ class SensorSun(UsageModel):
     batt_defect: Reading[bool] | None = Field(default=None, alias="battDefect")
     config_sensor: Reading[float] | None = Field(default=None, alias="configSensor")
     config_temp: Reading[float] | None = Field(default=None, alias="configTemp")
-    light_power: Reading[float] | None = Field(default=None, alias="lightPower")
+    light_power: Reading[float] | None = Field(
+        default=None, alias="lightPower", json_schema_extra={"unit": "W/m2"}
+    )

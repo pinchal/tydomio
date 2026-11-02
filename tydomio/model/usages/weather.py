@@ -32,12 +32,24 @@ class WeatherCondition(TydomEnum):
 class Weather(UsageModel):
     """Weather."""
 
-    current_power: Reading[float] | None = Field(default=None, alias="currentPower")
-    daily_power: Reading[float] | None = Field(default=None, alias="dailyPower")
-    max_daily_out_temp: Reading[float] | None = Field(
-        default=None, alias="maxDailyOutTemp"
+    current_power: Reading[float] | None = Field(
+        default=None, alias="currentPower", json_schema_extra={"unit": "Wh/m2"}
     )
-    out_temperature: Reading[float] | None = Field(default=None, alias="outTemperature")
+    daily_power: Reading[float] | None = Field(
+        default=None, alias="dailyPower", json_schema_extra={"unit": "Wh/m2"}
+    )
+    max_daily_out_temp: Reading[float] | None = Field(
+        default=None,
+        alias="maxDailyOutTemp",
+        description="Highest outdoor temperature of the day",
+        json_schema_extra={"unit": "degC"},
+    )
+    out_temperature: Reading[float] | None = Field(
+        default=None,
+        alias="outTemperature",
+        description="Outdoor temperature",
+        json_schema_extra={"unit": "degC"},
+    )
     weather: Reading[WeatherCondition | str] | None = Field(
         default=None, alias="weather"
     )

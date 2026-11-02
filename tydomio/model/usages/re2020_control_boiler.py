@@ -2,7 +2,7 @@
 
 from pydantic import Field
 
-from .base import Reading, TydomEnum, UsageModel, UsageWrite
+from .base import IndoorHumidity, Reading, TydomEnum, UsageModel, UsageWrite
 
 
 class ShutterCmd(TydomEnum):
@@ -17,10 +17,10 @@ class Re2020ControlBoiler(UsageModel):
     """RE2020 room thermostat."""
 
     ambient_temperature: Reading[float] | None = Field(
-        default=None, alias="ambientTemperature"
+        default=None, alias="ambientTemperature", json_schema_extra={"unit": "degC"}
     )
     batt_level: Reading[float] | None = Field(default=None, alias="battLevel")
-    hygro_in: Reading[float] | None = Field(default=None, alias="hygroIn")
+    hygro_in: IndoorHumidity
     is_reference: Reading[bool] | None = Field(default=None, alias="isReference")
     jobs: Reading[float] | None = Field(default=None, alias="jobs")
     jobs_mp: Reading[float] | None = Field(default=None, alias="jobsMP")

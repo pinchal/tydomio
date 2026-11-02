@@ -25,7 +25,9 @@ class Boiler(ThermicZone):
     temp_sensor_short_cut: Reading[bool] | None = Field(
         default=None, alias="tempSensorShortCut"
     )
-    temperature: Reading[float] | None = Field(default=None, alias="temperature")
+    temperature: Reading[float] | None = Field(
+        default=None, alias="temperature", json_schema_extra={"unit": "degC"}
+    )
 
 
 class BoilerWrite(ThermicWrite[Boiler]):
