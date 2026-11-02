@@ -69,15 +69,18 @@ class JsonResponse(Response):
             content=response.content,
         )
 
-        if self.status not in valid_status_codes or not has_json_content(self.headers):
-            raise InvalidResponse(response)
+        if self.status not in valid_status_codes:
+            raise InvalidResponse(f"Unexpected response with status {self.status}")
+        if not has_json_content(self.headers):
+            raise InvalidResponse("Content is not JSON")
 
         try:
             self.json_content = (
                 json.loads(response.content) if response.content is not None else None
             )
-        except json.JSONDecodeError as error:
-            raise InvalidResponse(response) from error
+        except json.JSONDecodeError:
+            # the decoding error holds the content: neither echoed nor chained
+            raise InvalidResponse("Content is not JSON") from None
 
         if DEV_MODE:
             origin = self.headers.get("uri-origin", "no-origin")
@@ -99,7 +102,8 @@ class Ok(Response):
         )
 
         if self.status != _STATUS_CODE_OK or self.content is not None:
-            raise InvalidResponse(response)
+            # the content may describe the home: never in the message
+            raise InvalidResponse(f"Unexpected response with status {self.status}")
 
 
 class ConfigResponse(Response):
@@ -118,10 +122,11 @@ class ConfigResponse(Response):
             or self.headers.get("uri-origin") != "/configs/file"
             or response.content is None
         ):
-            raise InvalidResponse()
+            raise InvalidResponse(f"Unexpected response with status {self.status}")
 
         try:
             self.config = config_mdl.Config.model_validate_json(response.content)
 
-        except pydantic.ValidationError as error:
-            raise InvalidResponse() from error
+        except pydantic.ValidationError:
+            # pydantic's error holds the received values: not chained
+            raise InvalidResponse("Invalid /configs/file content") from None
