@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Final
 
+from ..scrub import REDACTED
 from .jsonvalue import JsonValue
 from .policy import (
     ANY_KEY,
@@ -20,7 +21,6 @@ from .policy import (
     segment_matches,
 )
 
-REDACTED: Final = "<redacted>"
 NOT_IN_ENUM: Final = "<not-in-enum>"
 IDENTIFIER: Final = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 _STATUS_OK: Final = 200

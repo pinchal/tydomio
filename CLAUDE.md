@@ -207,10 +207,11 @@ Current state, kept up to date with each change.
 | `tydomio/model/usages/<usage>.py` | Typed read model of one usage (`shutter`, `boiler`, `re2020_control_boiler`, `conso`, `sensor_sun`, `weather`) or of areas (`area`), with its enums, and its write model when it may be written (`ShutterWrite`, `BoilerWrite`, `Re2020ControlBoilerWrite`, `AreaWrite`) | `model.usages.base`, pydantic; `boiler` and `area` also `model.usages.thermic` |
 | `tydomio/error.py` | Exception hierarchy (`TydomIoError`) | — |
 | `tydomio/cli.py` | Temporary debug CLI to try the library on a real Tydom; not to be extended, the real CLI will be designed later | `client`, `requests` |
+| `tydomio/scrub.py` | `Secrets` (password, IP, MAC) with its pattern and `scrub`, `SecretFilter` log filter, `REDACTED` marker; shared by capture and the MCP server, never configures logging | — |
 | `tydomio/capture/jsonvalue.py` | `JsonValue` and the strict JSON parser (UTF-8, no NaN or Infinity, depth 64) | `error` |
 | `tydomio/capture/fetch.py` | Endpoint table, read-only `Fetcher` connection routine, `run_capture` with its deadline | `client`, `requests`, `response`, `error`, `capture.jsonvalue` |
 | `tydomio/capture/policy.py` | Anonymization rules per endpoint, pure data, and their path parser | — |
-| `tydomio/capture/anonymize.py` | Pure anonymization of the bodies by the policy: id map, names, keys, keep constraints, report of redacted leaves and renamed keys | `capture.policy`, `capture.jsonvalue` |
-| `tydomio/capture/store.py` | What is written: manifest and envelopes, secrets scan (password, MAC, IP) and their scrubbing, output directory, owner-only files | `capture.fetch`, `capture.anonymize`, `capture.policy`, `capture.jsonvalue` |
+| `tydomio/capture/anonymize.py` | Pure anonymization of the bodies by the policy: id map, names, keys, keep constraints, report of redacted leaves and renamed keys | `scrub`, `capture.policy`, `capture.jsonvalue` |
+| `tydomio/capture/store.py` | What is written: manifest and envelopes, secrets scan (password, MAC, IP), output directory, owner-only files | `scrub`, `capture.fetch`, `capture.anonymize`, `capture.policy`, `capture.jsonvalue` |
 | `tydomio/capture/catalog.py` | Catalog of the field and command descriptors per usage, extracted from a capture and merged into `tests/usages.json` (enum values unioned, other differences are conflicts); `python -m` entry point | `error`, `capture.jsonvalue`, pydantic |
-| `tydomio/capture/cli.py` | `tydomio-capture` entry point: arguments, password, logging with its secret filter, refusal to write on a secret found, exit codes, summary | `client`, `capture.*` |
+| `tydomio/capture/cli.py` | `tydomio-capture` entry point: arguments, password, logging with the `scrub` secret filter, refusal to write on a secret found, exit codes, summary | `client`, `scrub`, `capture.*` |

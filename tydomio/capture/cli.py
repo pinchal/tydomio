@@ -12,9 +12,10 @@ from collections.abc import Mapping, Sequence
 from datetime import date
 from importlib.metadata import version
 from pathlib import Path
-from typing import Final, override
+from typing import Final
 
 from ..client import AsyncTydomClient, AuthorizationProvider, ConnectionFactory, Sleep
+from ..scrub import SecretFilter, Secrets
 from .anonymize import Anonymized, anonymize
 from .fetch import (
     DEADLINE,
@@ -28,7 +29,6 @@ from .fetch import (
 from .jsonvalue import JsonValue
 from .store import (
     MANIFEST_FILE,
-    Secrets,
     build_envelope,
     build_manifest,
     create_directory,
@@ -49,22 +49,6 @@ _NOISY_LOGGERS: Final = ("httpx", "httpcore", "websockets", "asyncio")
 
 class _Failure(Exception):
     """A failure of the run, its message free of secrets and values."""
-
-
-class _SecretFilter(logging.Filter):
-    """Format each record, scrub the secrets and drop the traceback."""
-
-    def __init__(self, secrets_: Secrets) -> None:
-        super().__init__()
-        self._secrets = secrets_
-
-    @override
-    def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = self._secrets.scrub(record.getMessage())
-        record.args = None
-        record.exc_info = None
-        record.exc_text = None
-        return True
 
 
 def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
@@ -113,7 +97,7 @@ def _secrets(args: argparse.Namespace) -> Secrets:
 def _configure_logging(secrets_: Secrets) -> logging.Handler:
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
-    handler.addFilter(_SecretFilter(secrets_))
+    handler.addFilter(SecretFilter(secrets_))
     root = logging.getLogger()
     root.addHandler(handler)
     root.setLevel(logging.INFO)

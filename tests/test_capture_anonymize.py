@@ -4,13 +4,13 @@ import pytest
 
 from tydomio.capture.anonymize import (
     NOT_IN_ENUM,
-    REDACTED,
     Anonymized,
     RenamedKey,
     UnknownLeaf,
     anonymize,
 )
 from tydomio.capture.jsonvalue import JsonValue
+from tydomio.scrub import REDACTED
 
 CONFIGS = "/configs/file"
 DEVICES_META = "/devices/meta"
