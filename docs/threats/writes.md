@@ -1,10 +1,12 @@
 # Threats: writes to equipment
 
-A write changes a device or an area of the home. There are two requests:
+A write changes a device, a group of devices or an area of the home. There are three
+requests:
 
 | Request | Sends |
 | --- | --- |
 | `WriteEndpoint(ref, write)` | `PUT /devices/{device}/endpoints/{endpoint}/data` |
+| `WriteGroup(ref, write)` | `PUT /groups/{group}/data` |
 | `WriteArea(ref, write)` | `PUT /areas/{area}/data` |
 
 This page lists what a mistake or a malicious caller could do through them, and the
@@ -45,6 +47,21 @@ Tests: `test_installation.py::test_endpoint_id_shared_by_two_devices_resolves_pe
 `test_endpoint_of_another_usage_is_refused`, `test_unknown_endpoint_is_refused_without_its_ids`;
 `test_requests.py::test_write_of_another_usage_is_refused`,
 `test_write_endpoint_puts_to_the_device_and_endpoint_of_the_ref`.
+
+### One write moves several devices
+
+A group write repeats a mistake on every device of the group.
+
+`Installation` indexes the groups by id with their usage, from `/configs/file`, and
+hands out a `GroupRef[U]` only for a group of usage `U`. `WriteGroup` takes a
+`UsageWrite[U]` and goes through everything an endpoint write does: the runtime check,
+revalidation, JSON body, acknowledgement and logs. Only a usage with a write model can
+be written, today the shutter groups.
+
+Tests: `test_installation.py::test_unknown_group_is_refused_without_its_id`,
+`test_group_of_another_usage_is_refused`, `test_group_reference_refuses_an_id_that_is_not_an_int`;
+`test_requests.py::test_write_group_puts_the_body_to_the_group_of_the_ref`,
+`test_write_of_another_usage_is_refused_for_a_group`.
 
 ### Out-of-range, unknown or non-finite values
 
@@ -116,5 +133,6 @@ library does not send it again: the caller reads the state back before deciding.
 
 Heating writes are never sent to the real box, not by tests, examples or default
 routines, and tests use injected doubles only. The acknowledgement (status 200, no
-content) was checked on the real box once, with a shutter `positionCmd` `DOWN`, which
-moved the shutter. It is not verified for heating writes.
+content) was checked on the real box twice: a shutter `positionCmd` `DOWN`, which
+moved the shutter, and a shutter group `positionCmd` `UP`, which opened all its
+shutters. It is not verified for heating writes.

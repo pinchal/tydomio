@@ -22,7 +22,7 @@ class AuthorizationError(CommunicationError):
 
 
 class InvalidTarget(TydomIoError):
-    """Exception raised for an endpoint or area unknown or not of the usage expected."""
+    """Exception raised for a target unknown or not of the usage expected."""
 
 
 class InvalidWrite(TydomIoError):

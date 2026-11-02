@@ -4,11 +4,11 @@ import logging
 import pytest
 
 from tydomio.error import InvalidRequest, InvalidTarget, InvalidWrite
-from tydomio.installation import AreaRef, EndpointRef
+from tydomio.installation import AreaRef, EndpointRef, GroupRef
 from tydomio.model.usages import UsageModel
 from tydomio.model.usages.area import AreaWrite
 from tydomio.model.usages.boiler import Boiler, BoilerWrite
-from tydomio.model.usages.shutter import Shutter, ShutterWrite
+from tydomio.model.usages.shutter import PositionCmd, Shutter, ShutterWrite
 from tydomio.requests import (
     JsonRequest,
     PingRequest,
@@ -17,6 +17,7 @@ from tydomio.requests import (
     TydomPutDevicesDataRequest,
     WriteArea,
     WriteEndpoint,
+    WriteGroup,
 )
 from tydomio.response import Ok, Response
 
@@ -261,6 +262,19 @@ def test_write_area_puts_to_the_area_of_the_ref() -> None:
     assert (request.method, request.url) == ("PUT", "/areas/7/data")
 
 
+def test_write_group_puts_the_body_to_the_group_of_the_ref() -> None:
+    request = WriteGroup(
+        GroupRef(5, Shutter), ShutterWrite(position_cmd=PositionCmd.UP)
+    )
+
+    assert request.content is not None
+    assert (request.method, request.url, json.loads(request.content)) == (
+        "PUT",
+        "/groups/5/data",
+        [{"name": "positionCmd", "value": "UP"}],
+    )
+
+
 def test_write_content_is_the_json_body_of_the_fields_set() -> None:
     request = WriteEndpoint(SHUTTER, ShutterWrite(position=42))
 
@@ -280,6 +294,13 @@ def test_write_of_another_usage_is_refused() -> None:
 
     with pytest.raises(InvalidTarget):
         WriteEndpoint(ref, BoilerWrite(setpoint=19.5))
+
+
+def test_write_of_another_usage_is_refused_for_a_group() -> None:
+    ref = GroupRef[UsageModel](5, Shutter)
+
+    with pytest.raises(InvalidTarget):
+        WriteGroup(ref, BoilerWrite(setpoint=19.5))
 
 
 def test_write_skipping_validation_is_validated_again() -> None:

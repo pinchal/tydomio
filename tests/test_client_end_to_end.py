@@ -18,7 +18,12 @@ from tydomio.installation import Installation
 from tydomio.model.config import Config
 from tydomio.model.data import DevicesData
 from tydomio.model.usages.shutter import Shutter, ShutterWrite
-from tydomio.requests import GetConfigFile, TydomPutDevicesDataRequest, WriteEndpoint
+from tydomio.requests import (
+    GetConfigFile,
+    TydomPutDevicesDataRequest,
+    WriteEndpoint,
+    WriteGroup,
+)
 from tydomio.response import Ok
 
 
@@ -92,6 +97,10 @@ async def test_user_is_disconnected_then_reconnected_after_connection_lost() -> 
     assert disconnections == [1, 2]
 
 
+SHUTTER_GROUP = (
+    b'{"group_all": false, "usage": "shutter", "name": "name", "id": 5,'
+    b' "is_group_user": true, "picto": "picto"}'
+)
 SHUTTER_ENDPOINT = (
     b'{"id_endpoint": 1, "first_usage": "shutter", "skill": "skill", "id_device": 10,'
     b' "name": "name", "anticipation_start": false, "picto": "picto",'
@@ -100,16 +109,16 @@ SHUTTER_ENDPOINT = (
 
 
 def reply_with_a_shutter(sent: bytes) -> bytes:
-    """Answer as tydom_reply, with one shutter endpoint in the config."""
+    """Answer as tydom_reply, with one shutter endpoint and group in the config."""
     return tydom_reply(sent).replace(
         CONFIG_CONTENT,
         CONFIG_CONTENT.replace(
             b'"endpoints": []', b'"endpoints": [' + SHUTTER_ENDPOINT + b"]"
-        ),
+        ).replace(b'"groups": []', b'"groups": [' + SHUTTER_GROUP + b"]"),
     )
 
 
-async def test_user_writes_a_shutter_position_found_in_the_config() -> None:
+async def test_user_writes_a_shutter_and_a_group_found_in_the_config() -> None:
     acknowledgements: list[Ok] = []
     written = asyncio.Event()
 
@@ -120,6 +129,10 @@ async def test_user_writes_a_shutter_position_found_in_the_config() -> None:
         ref = installation.endpoint(10, 1, Shutter)
         acknowledgements.append(
             await client.send(WriteEndpoint(ref, ShutterWrite(position=42)))
+        )
+        group = installation.group(5, Shutter)
+        acknowledgements.append(
+            await client.send(WriteGroup(group, ShutterWrite(position=0)))
         )
         written.set()
 
@@ -139,8 +152,9 @@ async def test_user_writes_a_shutter_position_found_in_the_config() -> None:
     run.cancel()
     await run
 
-    assert isinstance(acknowledgements[0], Ok)
+    assert [type(ack) for ack in acknowledgements] == [Ok, Ok]
     writes = [sent for sent in websocket.sent if sent.startswith(b"PUT ")]
     assert [(w.split(b" ")[1], w.split(b"\r\n\r\n")[1]) for w in writes] == [
-        (b"/devices/10/endpoints/1/data", b'[{"name": "position", "value": 42}]')
+        (b"/devices/10/endpoints/1/data", b'[{"name": "position", "value": 42}]'),
+        (b"/groups/5/data", b'[{"name": "position", "value": 0}]'),
     ]
