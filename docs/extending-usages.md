@@ -90,6 +90,11 @@ model does not know lands in `unknown`, so a new firmware does not break the par
 An enum subclasses `TydomEnum` with the catalog values, and its field is annotated
 `Reading[MyEnum | str]`: a value outside the enum is logged and kept as a plain `str`.
 
+A numeric field also carries the catalog `unit`, as `json_schema_extra={"unit": "degC"}`
+(`NA` and `boolean` are not carried; a test compares every unit to the catalog), and read
+back through `field_meta()`. Add a `description="..."` only when the meaning is known for
+sure, as for the shutter `position` ("0 = closed, 100 = open"): a guess is worse than none.
+
 Only the fields meant to be written go into a write model, a subclass of
 `UsageWrite[MyUsage]`. Each field is `X | None` with the catalog bounds (`ge`, `le`,
 `multiple_of` for the step), and an enum field is `Annotated[MyEnum, member_of(MyEnum)]`.

@@ -49,34 +49,44 @@ class ThermicZone(UsageModel):
     """Regulation fields shared by a `boiler` heating zone and an area."""
 
     ambient_temperature: Reading[float] | None = Field(
-        default=None, alias="ambientTemperature"
+        default=None, alias="ambientTemperature", json_schema_extra={"unit": "degC"}
     )
     authorization: Reading[Authorization | str] | None = Field(
         default=None, alias="authorization"
     )
-    heat_setpoint: Reading[float] | None = Field(default=None, alias="heatSetpoint")
+    heat_setpoint: Reading[float] | None = Field(
+        default=None, alias="heatSetpoint", json_schema_extra={"unit": "degC"}
+    )
     local_mode: Reading[LocalMode | str] | None = Field(default=None, alias="localMode")
     max_heat_setpoint: Reading[float] | None = Field(
-        default=None, alias="maxHeatSetpoint"
+        default=None, alias="maxHeatSetpoint", json_schema_extra={"unit": "degC"}
     )
-    max_setpoint: Reading[float] | None = Field(default=None, alias="maxSetpoint")
+    max_setpoint: Reading[float] | None = Field(
+        default=None, alias="maxSetpoint", json_schema_extra={"unit": "degC"}
+    )
     min_heat_setpoint: Reading[float] | None = Field(
-        default=None, alias="minHeatSetpoint"
+        default=None, alias="minHeatSetpoint", json_schema_extra={"unit": "degC"}
     )
-    min_setpoint: Reading[float] | None = Field(default=None, alias="minSetpoint")
+    min_setpoint: Reading[float] | None = Field(
+        default=None, alias="minSetpoint", json_schema_extra={"unit": "degC"}
+    )
     opening_detected: Reading[bool] | None = Field(
         default=None, alias="openingDetected"
     )
     override_remaining_time: Reading[float] | None = Field(
-        default=None, alias="overrideRemainingTime"
+        default=None,
+        alias="overrideRemainingTime",
+        json_schema_extra={"unit": "minute"},
     )
     override_setpoint: Reading[float] | None = Field(
-        default=None, alias="overrideSetpoint"
+        default=None, alias="overrideSetpoint", json_schema_extra={"unit": "degC"}
     )
     override_thermic_level: Reading[ThermicLevel | str] | None = Field(
         default=None, alias="overrideThermicLevel"
     )
-    setpoint: Reading[float] | None = Field(default=None, alias="setpoint")
+    setpoint: Reading[float] | None = Field(
+        default=None, alias="setpoint", json_schema_extra={"unit": "degC"}
+    )
     thermic_level: Reading[ThermicLevel | str] | None = Field(
         default=None, alias="thermicLevel"
     )

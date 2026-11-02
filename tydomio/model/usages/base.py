@@ -1,9 +1,10 @@
 """Shared pieces of the usage models: a reading, a tolerant enum, the base models."""
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import Self
+from typing import Annotated, Self
 
 from pydantic import (
     AfterValidator,
@@ -57,14 +58,49 @@ class TydomEnum(StrEnum):
             return value
 
 
+IndoorHumidity = Annotated[
+    Reading[float] | None,
+    Field(
+        default=None,
+        alias="hygroIn",
+        description="Indoor relative humidity",
+        json_schema_extra={"unit": "%"},
+    ),
+]
+"""The `hygroIn` field, declared once for the models that read it."""
+
+
+@dataclass(frozen=True)
+class FieldMeta:
+    """What a value means: its Tydom unit and, where known, a short description."""
+
+    unit: str | None
+    description: str | None
+
+
 class UsageModel(BaseModel):
     """Typed fields of one usage; fields absent from a message stay `None`.
 
-    Each field is `Reading[...] | None` with `alias` set to its Tydom name.
+    Each field is `Reading[...] | None` with `alias` set to its Tydom name, and for a
+    numeric field `json_schema_extra={"unit": ...}` (see `field_meta`).
     """
 
     unknown: dict[str, Data] = Field(default_factory=dict)
     """Fields the model does not know, kept as received."""
+
+    @classmethod
+    def field_meta(cls) -> Mapping[str, FieldMeta]:
+        """Give the unit and description of the fields that have one, by Tydom name."""
+        meta: dict[str, FieldMeta] = {}
+        for info in cls.model_fields.values():
+            extra = info.json_schema_extra
+            unit = extra.get("unit") if isinstance(extra, dict) else None
+            unit = unit if isinstance(unit, str) else None
+            if info.alias is not None and (
+                unit is not None or info.description is not None
+            ):
+                meta[info.alias] = FieldMeta(unit=unit, description=info.description)
+        return meta
 
     @classmethod
     def from_data(cls, data: Iterable[Data]) -> Self:

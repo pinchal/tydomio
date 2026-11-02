@@ -5,7 +5,15 @@ from pydantic import Field
 
 from tydomio.error import InvalidResponse
 from tydomio.model.data import Data
-from tydomio.model.usages import USAGES, Reading, TydomEnum, UsageModel, parse_usage
+from tydomio.model.usages import (
+    USAGES,
+    FieldMeta,
+    Reading,
+    Shutter,
+    TydomEnum,
+    UsageModel,
+    parse_usage,
+)
 
 
 class Mode(TydomEnum):
@@ -75,3 +83,9 @@ def test_unknown_usage_has_no_model() -> None:
 @pytest.mark.parametrize(("usage", "model"), USAGES.items())
 def test_known_usage_parses_into_its_model(usage: str, model: type[UsageModel]) -> None:
     assert type(parse_usage(usage, [])) is model
+
+
+def test_field_meta_holds_the_shutter_position() -> None:
+    assert Shutter.field_meta()["position"] == FieldMeta(
+        unit="%", description="0 = closed, 100 = open"
+    )

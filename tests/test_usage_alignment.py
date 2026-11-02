@@ -104,6 +104,16 @@ def test_enum_values_are_members(usage: str, field: Descriptor) -> None:
     )
 
 
+@pytest.mark.parametrize(("usage", "field"), FIELDS)
+def test_unit_matches_the_catalog(usage: str, field: Descriptor) -> None:
+    meta = MODELS[usage].field_meta().get(field.name)
+    found = None if meta is None else meta.unit
+    expected = None if field.unit in {None, "NA", "boolean"} else field.unit
+    assert found == expected, (
+        f"usage {usage!r}, field {field.name!r}: unit {found!r}, catalog {expected!r}"
+    )
+
+
 def is_writable(descriptor: Descriptor) -> bool:
     return "w" in (descriptor.permission or "")
 

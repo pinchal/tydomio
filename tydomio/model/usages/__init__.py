@@ -13,7 +13,7 @@ from typing import Final
 from tydomio.model.data import Data
 
 from .area import Area, AreaWrite
-from .base import Reading, TydomEnum, UsageModel, UsageWrite
+from .base import FieldMeta, Reading, TydomEnum, UsageModel, UsageWrite
 from .boiler import Boiler, BoilerWrite
 from .conso import Conso
 from .re2020_control_boiler import Re2020ControlBoiler, Re2020ControlBoilerWrite
@@ -26,6 +26,7 @@ __all__ = [
     "USAGES",
     "WRITES",
     "Area",
+    "FieldMeta",
     "Reading",
     "TydomEnum",
     "UsageModel",
