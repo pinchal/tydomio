@@ -19,10 +19,16 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 
+[project.optional-dependencies]
+# anyio: the stdio streams the server is given are anyio files
+mcp = ["anyio>=4.10", "mcp>=2.3,<2.4"]
+
 [dependency-groups]
 dev = [
+  "anyio>=4.10",
   "coverage>=7.17",
   "datamodel-code-generator>=0.87",
+  "mcp>=2.3,<2.4",
   "pre-commit>=4.7",
   "pylint>=4.1",
   "pytest>=9.2.0",
@@ -35,6 +41,7 @@ package = true
 [project.scripts]
 tydomio-cli = "tydomio.cli:main"
 tydomio-capture = "tydomio.capture.cli:main"
+tydomio-mcp = "tydomio.mcp_server.server:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

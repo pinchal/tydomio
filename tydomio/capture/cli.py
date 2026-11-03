@@ -5,7 +5,6 @@ import asyncio
 import getpass
 import logging
 import os
-import re
 import secrets
 import sys
 from collections.abc import Mapping, Sequence
@@ -15,7 +14,8 @@ from pathlib import Path
 from typing import Final
 
 from ..client import AsyncTydomClient, AuthorizationProvider, ConnectionFactory, Sleep
-from ..scrub import SecretFilter, Secrets
+from ..scrub import SecretFilter, Secrets, bare_mac
+from ..stderr_logging import log_to_stderr
 from .anonymize import Anonymized, anonymize
 from .fetch import (
     DEADLINE,
@@ -42,9 +42,6 @@ from .store import (
 EXIT_COMPLETE: Final = 0
 EXIT_PARTIAL: Final = 1
 EXIT_NOTHING_WRITTEN: Final = 2
-
-_MAC = re.compile(r"[0-9a-fA-F]{2}([:.-]?)(?:[0-9a-fA-F]{2}\1){4}[0-9a-fA-F]{2}")
-_NOISY_LOGGERS: Final = ("httpx", "httpcore", "websockets", "asyncio")
 
 
 class _Failure(Exception):
@@ -79,31 +76,16 @@ def _prompt(variable: str | None, prompt: str, missing: str) -> str:
 
 def _secrets(args: argparse.Namespace) -> Secrets:
     """Return the MAC, the password and the IP given or typed; _Failure if missing."""
-    mac = _prompt(args.tydom_mac, "Tydom MAC address: ", "no Tydom MAC address")
-    if not _MAC.fullmatch(mac):
+    mac = bare_mac(
+        _prompt(args.tydom_mac, "Tydom MAC address: ", "no Tydom MAC address")
+    )
+    if mac is None:
         raise _Failure("the Tydom MAC address is not 12 hexadecimal digits")
     password = _prompt(
         os.environ.get("TYDOM_PASSWORD"), "Tydom password: ", "no Tydom password"
     )
-    # the box expects the 12 bare digits in the digest username and the URLs;
     # an empty TYDOM_IP means remote access, as an unset one
-    return Secrets(
-        password=password,
-        ip=args.tydom_ip or None,
-        mac=re.sub(r"[^0-9A-Fa-f]", "", mac).upper(),
-    )
-
-
-def _configure_logging(secrets_: Secrets) -> logging.Handler:
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
-    handler.addFilter(SecretFilter(secrets_))
-    root = logging.getLogger()
-    root.addHandler(handler)
-    root.setLevel(logging.INFO)
-    for name in _NOISY_LOGGERS:
-        logging.getLogger(name).setLevel(logging.WARNING)
-    return handler
+    return Secrets(password=password, ip=args.tydom_ip or None, mac=mac)
 
 
 def _documents(
@@ -212,7 +194,8 @@ def main(
         )
         return EXIT_NOTHING_WRITTEN
 
-    handler = _configure_logging(secrets_)
+    handler = log_to_stderr()
+    handler.addFilter(SecretFilter(secrets_))
     status = EXIT_NOTHING_WRITTEN
     try:
         fetcher = Fetcher()

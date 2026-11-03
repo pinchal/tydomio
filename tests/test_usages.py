@@ -9,7 +9,6 @@ from tydomio.model.usages import (
     USAGES,
     FieldMeta,
     Reading,
-    Shutter,
     TydomEnum,
     UsageModel,
     parse_usage,
@@ -25,7 +24,12 @@ class Mode(TydomEnum):
 class Lamp(UsageModel):
     """Invented usage."""
 
-    level: Reading[float] | None = Field(default=None, alias="levelPct")
+    level: Reading[float] | None = Field(
+        default=None,
+        alias="levelPct",
+        description="Light level",
+        json_schema_extra={"unit": "%"},
+    )
     mode: Reading[Mode | str] | None = Field(default=None, alias="mode")
 
 
@@ -85,7 +89,9 @@ def test_known_usage_parses_into_its_model(usage: str, model: type[UsageModel]) 
     assert type(parse_usage(usage, [])) is model
 
 
-def test_field_meta_holds_the_shutter_position() -> None:
-    assert Shutter.field_meta()["position"] == FieldMeta(
-        unit="%", description="0 = closed, 100 = open"
-    )
+def test_field_meta_gives_the_unit_and_description_of_the_fields_that_have_one() -> (
+    None
+):
+    assert Lamp.field_meta() == {
+        "levelPct": FieldMeta(unit="%", description="Light level")
+    }

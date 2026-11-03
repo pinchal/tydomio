@@ -134,8 +134,12 @@ library does not send it again: the caller reads the state back before deciding.
 
 ## Not verified
 
-Heating writes are never sent to the real box, not by tests, examples or default
-routines, and tests use injected doubles only. The acknowledgement (status 200, no
-content) was checked on the real box twice: a shutter `positionCmd` `DOWN`, which
+Heating writes are never sent to the real Tydom by tests, examples or default routines,
+and tests use injected doubles only. The acknowledgement (status 200, no content) was
+checked on the real Tydom for shutters twice: a shutter `positionCmd` `DOWN`, which
 moved the shutter, and a shutter group `positionCmd` `UP`, which opened all its
-shutters. It is not verified for heating writes.
+shutters. For heating, it was checked once, in a supervised run through the MCP server
+(E15): `heatSetpoint` 20 then back to 19.5 on a heating area in `SCHED` mode, both
+acknowledged. The state read back a few seconds later gave the new `heatSetpoint` and
+`setpoint` on the area and on the `boiler` endpoint of the same zone, `useMode` still
+`SCHED`; whether the schedule later overwrites such a setpoint is not verified.

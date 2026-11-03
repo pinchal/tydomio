@@ -7,6 +7,15 @@ from typing import Final, override
 
 REDACTED: Final = "<redacted>"
 
+_MAC: Final = re.compile(r"[0-9a-fA-F]{2}([:.-]?)(?:[0-9a-fA-F]{2}\1){4}[0-9a-fA-F]{2}")
+
+
+def bare_mac(text: str) -> str | None:
+    """Return the MAC as the 12 upper-case hex digits the Tydom expects, else None."""
+    if not _MAC.fullmatch(text):
+        return None
+    return re.sub(r"[^0-9A-Fa-f]", "", text).upper()
+
 
 @dataclass(frozen=True)
 class Secrets:
