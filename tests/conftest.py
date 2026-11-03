@@ -138,7 +138,7 @@ def put(url: str, content: bytes) -> bytes:
 def answer_gets(
     answers: Mapping[str, tuple[int, bytes]],
 ) -> Callable[[bytes], bytes | None]:
-    """Answer each GET of a listed url with its status and JSON content.
+    """Answer each GET of a listed url with its status, origin and JSON content.
 
     The ping gets an empty 200; any other url gets no answer.
     """
@@ -155,6 +155,7 @@ def answer_gets(
         return (
             f"HTTP/1.1 {status} X\r\n".encode()
             + headers
+            + f"uri-origin: {url}\r\n".encode()
             + b"content-type: application/json\r\n\r\n"
             + content
         )
