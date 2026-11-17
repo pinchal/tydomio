@@ -7,13 +7,13 @@ from mcp import Client, MCPError
 from mcp import types as mcp_types
 from mcp.server.lowlevel import Server
 
-from tests.mcp.conftest import areas, config, data, devices
-from tydomio.mcp_server.cache import Cache
+from tests.builders import areas, config, data, devices
 from tydomio.mcp_server.tools import GET_STATE, build_server, error_result
 from tydomio.mcp_server.writes import SET_HEATING, SET_SHUTTER, Writes
 from tydomio.requests import ClientRequest
 from tydomio.response import Ok
 from tydomio.scrub import Secrets
+from tydomio.state.cache import Cache
 
 SECRETS = Secrets(
     password="".join(("hunter", "2")), ip="192.168.1.9", mac="001A2BAABBCC"

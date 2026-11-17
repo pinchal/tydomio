@@ -9,6 +9,7 @@ from typing import IO, Any
 import anyio
 import pytest
 
+from tests.builders import areas, config, data, devices
 from tests.conftest import (
     FakeAuthorizationProvider,
     FakeConnectionFactory,
@@ -17,9 +18,8 @@ from tests.conftest import (
     answer_gets,
     put,
 )
-from tests.mcp.conftest import areas, config, data, devices
 from tydomio.mcp_server import server
-from tydomio.mcp_server.cache import Cache
+from tydomio.state.cache import Cache
 
 # invented secrets; the password built from parts: a literal reads as hardcoded
 PASSWORD = "-".join(("Invented", "Pass", "42"))
@@ -189,28 +189,16 @@ def position(state: dict[str, Any]) -> object:
     return next(i for i in state["items"] if i["id"] == "e:10:1")["state"]["position"]
 
 
-@pytest.mark.parametrize("name", list(ENV))
-async def test_a_missing_variable_stops_with_2_naming_it(
-    name: str, capfd: pytest.CaptureFixture[str]
-) -> None:
-    env = {key: value for key, value in ENV.items() if key != name}
-
+@pytest.mark.parametrize(
+    "env",
+    [
+        {key: value for key, value in ENV.items() if key != "TYDOM_IP"},
+        ENV | {"TYDOM_MAC_ADDRESS": "00:11:22:zz"},
+    ],
+    ids=["missing variable", "bad MAC"],
+)
+async def test_misconfigured_secrets_stop_with_2(env: dict[str, str]) -> None:
     assert await server.run([], env) == 2
-
-    out, err = capfd.readouterr()
-    assert f"{name} is not set" in err
-    assert not [value for value in ENV.values() if value in err]
-    assert out == ""
-
-
-async def test_a_mac_that_is_not_12_hex_digits_stops_with_2(
-    capfd: pytest.CaptureFixture[str],
-) -> None:
-    assert await server.run([], ENV | {"TYDOM_MAC_ADDRESS": "00:11:22:zz"}) == 2
-
-    err = capfd.readouterr().err
-    assert "TYDOM_MAC_ADDRESS" in err
-    assert "zz" not in err
 
 
 @pytest.mark.parametrize("rate", ["0", "11", "-1", "nan", "inf", "x"])

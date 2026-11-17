@@ -108,9 +108,9 @@ tracebacks, at every level. There is no server token.
 
 Tests: `test_view.py::test_sanitize`;
 `test_server.py::test_at_debug_the_configured_handler_scrubs_the_secrets`,
-`test_a_missing_variable_stops_with_2_naming_it`,
-`test_a_mac_that_is_not_12_hex_digits_stops_with_2`;
-`tests/test_scrub.py`.
+`test_misconfigured_secrets_stop_with_2`;
+`test_scrub.py::test_a_missing_variable_is_logged_by_name`,
+`test_a_mac_that_is_not_12_hex_digits_is_logged_without_its_value`.
 
 ### A stale or unreadable cache misleads a decision (M13)
 
@@ -221,12 +221,16 @@ area whose config `last_usage` is in `HEATING_AREA_USAGES` (`re2020ControlBoiler
 device re-paired with another usage while connected keeps its old usage until the next
 reconnect.
 
-Tests: `test_writes.py::test_a_write_while_not_synced_sends_nothing`,
-`test_an_unknown_target_sends_nothing`,
-`test_a_write_after_drift_removed_the_target_sends_nothing`,
-`test_a_target_that_is_not_a_shutter_sends_nothing`,
-`test_set_heating_refuses_a_target_that_is_not_heating` (a shutter id, an area outside
-the whitelist), `test_set_heating_refuses_an_unknown_target`;
+The checks are those of `Writer` (`tydomio/state/writer.py`), under the `SHUTTER` or
+`HEATING` policy.
+
+Tests: `test_writer.py::test_a_write_while_not_synced_is_not_sent`,
+`test_an_unknown_or_malformed_target_is_not_sent`,
+`test_a_write_after_drift_removed_the_target_is_not_sent`,
+`test_a_target_the_installation_refuses_is_not_sent`,
+`test_a_target_the_policy_does_not_allow_is_not_sent` (a shutter id for heating, an
+area outside the whitelist);
+`test_writes.py::test_a_refusal_is_reported_with_its_note`;
 `test_server.py::test_end_to_end_set_shutter_sends_one_put_then_refuses_once_disconnected`.
 
 ### One write moves several devices
@@ -238,8 +242,8 @@ moves all its members, and the client prompts on every call. `set_heating` refus
 every group, a heating group included, though the library would write one: one call
 changes one zone.
 
-Tests: `test_writes.py::test_a_target_that_is_not_a_shutter_sends_nothing` (a group of
-another usage), `test_set_heating_refuses_a_target_that_is_not_heating` (`g:`).
+Tests: `test_writer.py::test_a_target_the_policy_does_not_allow_is_not_sent` (a group
+of another usage, a heating `g:`, known or not).
 
 ### Out-of-range, unknown or ambiguous values
 
@@ -251,10 +255,10 @@ so a field of another usage, such as `selectedProg` on an area, is refused. Its 
 is generated from those write models. A refusal is `invalid_write` with the library's
 message, which names fields, never values.
 
-Tests: `test_writes.py::test_an_invalid_write_sends_nothing_and_echoes_nothing`,
-`test_the_write_model_names_the_invalid_field`,
-`test_set_heating_refuses_an_invalid_write` (`setpoint` 19.3, an unknown field, empty
-`fields`, `selectedProg` on an area),
+Tests: `test_writer.py::test_an_invalid_write_is_not_sent_and_echoes_nothing`
+(`setpoint` 19.3, an unknown field, empty `fields`, `selectedProg` on an area),
+`test_the_write_model_names_the_invalid_field`;
+`test_writes.py::test_set_shutter_takes_exactly_one_of_command_or_position`,
 `test_set_heating_lists_each_heating_write_field_with_its_bounds`.
 
 ### Repeated writes and write loops (M5, M6)
@@ -272,11 +276,12 @@ included; a write sooner is `rate_limited`. The check and the count happen with 
 
 Tests: `test_writes.py::test_a_failed_send_is_unknown_after_one_put`,
 `test_a_write_lost_with_the_connection_is_unknown_after_one_put`,
-`test_cancelled_during_the_send_is_sent_once_counted_and_logged`,
-`test_a_write_within_the_interval_is_rate_limited`,
-`test_a_communication_error_is_counted`, `test_two_parallel_calls_send_one_write`,
 `test_the_rate_is_shared_by_both_tools`,
 `test_a_heating_write_is_acknowledged_after_one_put`;
+`test_writer.py::test_cancelled_during_the_send_is_sent_once_counted_and_logged`,
+`test_a_write_within_the_interval_is_rate_limited`,
+`test_a_communication_error_is_unknown_sent_once_and_counted`,
+`test_two_parallel_writes_send_one`;
 `test_tools.py::test_with_writes_set_shutter_is_listed_as_destructive_with_a_prompt`
 (`idempotentHint`).
 
@@ -285,7 +290,7 @@ Tests: `test_writes.py::test_a_failed_send_is_unknown_after_one_put`,
 A `STOP` waits at most `1 / rate` s, 1 s by default; a lower `--write-rate` delays it
 as much, which is the user's setting. `retry_after_s` never exceeds `1 / rate`.
 
-Tests: `test_writes.py::test_a_write_within_the_interval_is_rate_limited`,
+Tests: `test_writer.py::test_a_write_within_the_interval_is_rate_limited`,
 `test_retry_after_s_never_exceeds_the_interval`.
 
 ### A future write model reaches MCP unclassified (M16)
@@ -293,10 +298,10 @@ Tests: `test_writes.py::test_a_write_within_the_interval_is_rate_limited`,
 A new write model in the library, such as hot water, written through an MCP tool before
 anyone decided it should be.
 
-`writes.py` classifies every usage of `WRITES` as shutter or heating; a test fails
-until a new one is classified.
+`state/writer.py` classifies every usage of `WRITES` as shutter or heating; a test
+fails until a new one is classified.
 
-Tests: `test_writes.py::test_every_write_model_is_classified_once`.
+Tests: `test_writer.py::test_every_writes_key_is_classified`.
 
 ## Not verified
 

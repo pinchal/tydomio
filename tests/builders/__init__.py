@@ -1,7 +1,10 @@
-"""Builders shared by the MCP server tests."""
+"""Builders shared by the MCP server and state tests."""
+
+from datetime import UTC, datetime
 
 from tydomio.model.config import Config
 from tydomio.model.data import AreasData, Data, DevicesData, Endpoint, ModelItem
+from tydomio.state.cache import Cache
 
 
 def config(
@@ -81,3 +84,23 @@ def areas(*items: tuple[int, list[Data]]) -> AreasData:
     return AreasData(
         [Endpoint(id=area_id, error=0, data=fields) for area_id, fields in items]
     )
+
+
+def writable_cache() -> Cache:
+    """Build a fresh cache of shutters, heating endpoints, areas and groups to write."""
+    cache = Cache()
+    cache.apply_config(
+        config(
+            {
+                (10, 1): ("Shutter", "shutter"),
+                (20, 1): ("Boiler", "boiler"),
+                (30, 1): ("Thermostat", "re2020ControlBoiler"),
+            },
+            {7: ("Living", "re2020ControlBoiler"), 8: ("Hall", "hvac")},
+            {5: ("All shutters", "shutter"), 6: ("Heating", "boiler")},
+        )
+    )
+    cache.replace_devices(devices((10, 1, [data("position", 100)])), [])
+    cache.mark_connected()
+    cache.mark_synced(datetime(2026, 11, 2, 9, 14, 5, tzinfo=UTC))
+    return cache

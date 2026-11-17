@@ -1,61 +1,32 @@
-"""The write tools `set_shutter` and `set_heating`: checked, rate-limited, sent once."""
+"""The write tools `set_shutter` and `set_heating`, an MCP adapter over `Writer`."""
 
-import asyncio
 import logging
-import math
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
-from types import NoneType
-from typing import Annotated, Final, get_args, get_origin
+from typing import Annotated, Final
 
 from mcp import types as mcp_types
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
-from pydantic.fields import FieldInfo
-from pydantic.json_schema import JsonSchemaValue
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from ..error import CommunicationError, InvalidTarget, InvalidWrite
-from ..installation import EndpointRef, Installation
-from ..model.config import Config
-from ..model.usages import (
-    USAGES,
-    WRITES,
-    Area,
-    Boiler,
-    Re2020ControlBoiler,
-    Shutter,
-    UsageModel,
-    UsageWrite,
-)
-from ..model.usages.area import AreaWrite
+from ..error import InvalidWrite
 from ..model.usages.re2020_control_boiler import Re2020ControlBoilerWrite
-from ..model.usages.shutter import PositionCmd, ShutterWrite
+from ..model.usages.shutter import PositionCmd
 from ..model.usages.thermic import ThermicWrite
-from ..requests import ClientRequest, WriteArea, WriteEndpoint, WriteGroup
+from ..requests import ClientRequest
 from ..response import Ok
-from .cache import Cache
+from ..state.cache import Cache
+from ..state.view import utc_text
+from ..state.writer import HEATING, SHUTTER, NotSent, Sent, Writer, write_fields
 from .tools import ID_PATTERN, INVALID_INPUT, compact_json, error_result
-from .view import utc_text
 
 _logger = logging.getLogger(__name__)
-
-SHUTTER_USAGES: Final[frozenset[type[UsageModel]]] = frozenset({Shutter})
-"""The usages `set_shutter` writes, to endpoints and groups."""
-HEATING_USAGES: Final[frozenset[type[UsageModel]]] = frozenset(
-    {Boiler, Re2020ControlBoiler, Area}
-)
-"""The usages `set_heating` writes: endpoints of these usages, and areas."""
-HEATING_AREA_USAGES: Final = frozenset({"re2020ControlBoiler"})
-"""The `last_usage` of the config areas `set_heating` writes (E16)."""
-_HEATING_ENDPOINT_USAGES: Final = HEATING_USAGES - {Area}
-"""The usages of the endpoints `set_heating` writes; areas take the area path."""
 
 _TARGET_PATTERN: Final = r"^(e:[0-9]{1,15}:[0-9]{1,15}|g:[0-9]{1,15})$"
 # wider than the schema: a group is refused as wrong_usage, not as invalid input
 _HEATING_INPUT_PATTERN: Final = (
     r"^(e:[0-9]{1,15}:[0-9]{1,15}|g:[0-9]{1,15}|a:[0-9]{1,15})$"
 )
-_ON: Final = {"e": "on an endpoint", "g": "on a group", "a": "on an area"}
 
 _SET_SHUTTER_DESCRIPTION: Final = (
     "Move one shutter, or every shutter of a group, by its id from get_state: a "
@@ -110,15 +81,6 @@ _SET_HEATING_DESCRIPTION: Final = (
 )
 
 
-def _field_schema(info: FieldInfo) -> JsonSchemaValue:
-    """Give the JSON schema of one write field: its enum, or its type and bounds."""
-    (kind,) = (arg for arg in get_args(info.annotation) if arg is not NoneType)
-    if get_origin(kind) is Annotated:
-        # an enum checked by member_of, which hides it from pydantic's schema
-        return {"enum": [member.value for member in get_args(kind)[0]]}
-    return TypeAdapter(Annotated[kind, *info.metadata]).json_schema()
-
-
 SET_HEATING: Final = mcp_types.Tool(
     name="set_heating",
     description=_SET_HEATING_DESCRIPTION,
@@ -130,12 +92,8 @@ SET_HEATING: Final = mcp_types.Tool(
                 "type": "object",
                 "minProperties": 1,
                 "additionalProperties": False,
-                "properties": {
-                    info.alias: _field_schema(info)
-                    for model in (ThermicWrite, Re2020ControlBoilerWrite)
-                    for info in model.model_fields.values()
-                    if info.alias is not None
-                },
+                "properties": write_fields(ThermicWrite)
+                | write_fields(Re2020ControlBoilerWrite),
             },
         },
         "required": ["target", "fields"],
@@ -188,16 +146,33 @@ class SetHeatingInput(BaseModel):
     fields: dict[str, object]
 
 
-class _Refused(Exception):
-    """A refusal before the send, with its reason and note."""
+def _parsed[I: SetShutterInput | SetHeatingInput](
+    tool: str, model: type[I], arguments: Mapping[str, object]
+) -> I | mcp_types.CallToolResult:
+    """Parse the arguments; give the `invalid_input` result if they are invalid."""
+    _logger.debug("tool %s arguments: %r", tool, arguments)
+    try:
+        return model.model_validate(arguments)
+    except ValidationError:
+        # no detail: pydantic's text would carry the submitted value
+        _logger.info("tool %s: %s", tool, INVALID_INPUT)
+        return error_result(INVALID_INPUT, "Invalid arguments")
 
-    def __init__(
-        self, reason: str, note: str | None = None, retry_after_s: float | None = None
-    ) -> None:
-        super().__init__(reason)
-        self.reason = reason
-        self.note = note or _NOT_SENT_NOTES[reason]
-        self.retry_after_s = retry_after_s
+
+def _shutter_fields(
+    arguments: SetShutterInput,
+) -> Callable[[], Mapping[str, object]]:
+    """Give the shutter fields, taken by `Writer` after its target checks."""
+    given = arguments.model_fields_set & {"command", "position"}
+
+    def fields() -> Mapping[str, object]:
+        if len(given) != 1:
+            raise InvalidWrite("give exactly one of command or position")
+        if "command" in given:
+            return {"positionCmd": arguments.command}
+        return {"position": arguments.position}
+
+    return fields
 
 
 def _result(body: dict[str, object], *, is_error: bool) -> mcp_types.CallToolResult:
@@ -206,7 +181,15 @@ def _result(body: dict[str, object], *, is_error: bool) -> mcp_types.CallToolRes
     )
 
 
-def _not_sent(target: str, refused: _Refused) -> mcp_types.CallToolResult:
+def _not_sent(
+    target: str, refused: NotSent, wrong_usage: str
+) -> mcp_types.CallToolResult:
+    if refused.reason == "invalid_write":
+        note = f"Nothing was sent: {refused.detail}."
+    elif refused.reason == "wrong_usage":
+        note = wrong_usage
+    else:
+        note = _NOT_SENT_NOTES[refused.reason]
     body: dict[str, object] = {
         "target": target,
         "outcome": "not_sent",
@@ -214,101 +197,33 @@ def _not_sent(target: str, refused: _Refused) -> mcp_types.CallToolResult:
     }
     if refused.retry_after_s is not None:
         body["retry_after_s"] = refused.retry_after_s
-    body |= {"fields": {}, "note": refused.note}
+    body |= {"fields": {}, "note": note}
     return _result(body, is_error=True)
 
 
-def _validated[W: UsageWrite[UsageModel]](model: type[W], fields: object) -> W:
-    """Step 4: the fields, by Tydom name only, through the target's write model."""
-    try:
-        return model.model_validate(fields, by_name=False)
-    except InvalidWrite as error:
-        # the library message names fields, never values
-        raise _Refused("invalid_write", f"Nothing was sent: {error}.") from None
+def _reported(
+    target: str, outcome: Sent | NotSent, wrong_usage: str
+) -> mcp_types.CallToolResult:
+    """Report a write: its outcome, or why nothing was sent."""
+    if isinstance(outcome, NotSent):
+        return _not_sent(target, outcome, wrong_usage)
+    return _sent(target, outcome)
 
 
-def _usage(config: Config, kind: str, ids: list[int]) -> str:
-    """Step 2: the target's usage name in the config; `unknown_target` if absent."""
-    if kind == "e":
-        usages = {(e.id_device, e.id_endpoint): e.last_usage for e in config.endpoints}
-        usage = usages.get((ids[0], ids[1]))
-    elif kind == "g":
-        usage = {g.id: g.usage for g in config.groups}.get(ids[0])
-    else:
-        usage = {a.id: a.last_usage for a in config.areas}.get(ids[0])
-    if usage is None:
-        raise _Refused("unknown_target")
-    return usage
-
-
-def _ref[R](get: Callable[[], R]) -> R:
-    """Step 3: the ref from `Installation`, which checks again."""
-    try:
-        return get()
-    except InvalidTarget:
-        raise _Refused("unknown_target") from None
-
-
-type _Prepared = tuple[ClientRequest[Ok], UsageWrite[UsageModel]]
-"""The request to send and the write it carries."""
-
-
-def _shutter_write(
-    installation: Installation, config: Config, arguments: SetShutterInput
-) -> _Prepared:
-    """Check steps 2 to 4 of `set_shutter`: a shutter endpoint or group, its write."""
-    kind, *numbers = arguments.target.split(":")
-    ids = [int(n) for n in numbers]
-    if USAGES.get(_usage(config, kind, ids)) not in SHUTTER_USAGES:
-        raise _Refused("wrong_usage", _NOT_A_SHUTTER)
-    ref = _ref(
-        lambda: (
-            installation.endpoint(ids[0], ids[1], Shutter)
-            if kind == "e"
-            else installation.group(ids[0], Shutter)
-        )
-    )
-    given = arguments.model_fields_set & {"command", "position"}
-    if len(given) != 1:
-        raise _Refused(
-            "invalid_write",
-            "Nothing was sent: give exactly one of command or position.",
-        )
-    if "command" in given:
-        write = _validated(ShutterWrite, {"positionCmd": arguments.command})
-    else:
-        write = _validated(ShutterWrite, {"position": arguments.position})
-    if isinstance(ref, EndpointRef):
-        return WriteEndpoint(ref, write), write
-    return WriteGroup(ref, write), write
-
-
-def _heating_write(
-    installation: Installation, config: Config, arguments: SetHeatingInput
-) -> _Prepared:
-    """Check steps 2 to 4 of `set_heating`: a heating endpoint or area, its write."""
-    kind, *numbers = arguments.target.split(":")
-    ids = [int(n) for n in numbers]
-    # the library would write a boiler group: one call stays one zone
-    if kind == "g":
-        raise _Refused("wrong_usage", _NOT_HEATING)
-    usage = _usage(config, kind, ids)
-    if kind == "a":
-        if usage not in HEATING_AREA_USAGES:
-            raise _Refused("wrong_usage", _NOT_HEATING)
-        area = _ref(lambda: installation.area(ids[0]))
-        write = _validated(AreaWrite, arguments.fields)
-        return WriteArea(area, write), write
-    model = USAGES.get(usage)
-    if model is None or model not in _HEATING_ENDPOINT_USAGES:
-        raise _Refused("wrong_usage", _NOT_HEATING)
-    endpoint = _ref(lambda: installation.endpoint(ids[0], ids[1], model))
-    write = _validated(WRITES[model], arguments.fields)
-    return WriteEndpoint(endpoint, write), write
+def _sent(target: str, sent: Sent) -> mcp_types.CallToolResult:
+    unknown = sent.outcome == "unknown"
+    body: dict[str, object] = {
+        "target": target,
+        "outcome": sent.outcome,
+        "fields": sent.fields,
+        "sent_at": utc_text(sent.sent_at),
+        "note": _UNKNOWN_NOTE if unknown else _ACKNOWLEDGED_NOTE,
+    }
+    return _result(body, is_error=unknown)
 
 
 class Writes:
-    """The write tools over a cache and a send; one send per `1 / rate` s."""
+    """The write tools over one `Writer`, so both share its write rate."""
 
     def __init__(
         self,
@@ -324,12 +239,7 @@ class Writes:
 
         `set_heating` is listed and served only with `heating`. `now` dates `sent_at`.
         """
-        self._cache = cache
-        self._send = send
-        self._interval = 1 / rate
-        self._clock = clock
-        self._now = now
-        self._last_send: float | None = None
+        self._writer = Writer(cache, send, rate, clock, now)
         self.tools: tuple[mcp_types.Tool, ...] = (
             (SET_SHUTTER, SET_HEATING) if heating else (SET_SHUTTER,)
         )
@@ -347,86 +257,22 @@ class Writes:
         self, arguments: Mapping[str, object]
     ) -> mcp_types.CallToolResult:
         """Validate, rate-limit and send one shutter write; report its outcome."""
-        return await self._write(
-            SET_SHUTTER.name, SetShutterInput, _shutter_write, arguments
+        parsed = _parsed(SET_SHUTTER.name, SetShutterInput, arguments)
+        if isinstance(parsed, mcp_types.CallToolResult):
+            return parsed
+        outcome = await self._writer.write(
+            parsed.target, _shutter_fields(parsed), SHUTTER, "tool set_shutter"
         )
+        return _reported(parsed.target, outcome, _NOT_A_SHUTTER)
 
     async def set_heating(
         self, arguments: Mapping[str, object]
     ) -> mcp_types.CallToolResult:
         """Validate, rate-limit and send one heating write; report its outcome."""
-        return await self._write(
-            SET_HEATING.name, SetHeatingInput, _heating_write, arguments
+        parsed = _parsed(SET_HEATING.name, SetHeatingInput, arguments)
+        if isinstance(parsed, mcp_types.CallToolResult):
+            return parsed
+        outcome = await self._writer.write(
+            parsed.target, parsed.fields, HEATING, "tool set_heating"
         )
-
-    def _synced(self) -> tuple[Installation, Config]:
-        """Check step 1: a fresh cache, with its installation and config."""
-        installation = self._cache.installation
-        config = self._cache.config
-        if not self._cache.fresh or installation is None or config is None:
-            raise _Refused("not_synced")
-        return installation, config
-
-    def _count(self) -> None:
-        """Check step 5: no send within `1 / rate` s, then count this one."""
-        now = self._clock()
-        if self._last_send is not None:
-            wait = self._interval - (now - self._last_send)
-            if wait > 0:
-                # rounded up to the millisecond, never above the interval
-                retry = min(math.ceil(wait * 1000) / 1000, self._interval)
-                raise _Refused("rate_limited", retry_after_s=retry)
-        self._last_send = now
-
-    async def _write[I: SetShutterInput | SetHeatingInput](
-        self,
-        tool: str,
-        model: type[I],
-        prepare: Callable[[Installation, Config, I], _Prepared],
-        arguments: Mapping[str, object],
-    ) -> mcp_types.CallToolResult:
-        """Run steps 1 to 6 of a write tool; `prepare` checks its steps 2 to 4."""
-        _logger.debug("tool %s arguments: %r", tool, arguments)
-        try:
-            parsed = model.model_validate(arguments)
-        except ValidationError:
-            # no detail: pydantic's text would carry the submitted value
-            _logger.info("tool %s: %s", tool, INVALID_INPUT)
-            return error_result(INVALID_INPUT, "Invalid arguments")
-        target = parsed.target
-        on = _ON[target[0]]
-        # no await from the freshness check to the send: two calls cannot both pass
-        try:
-            request, write = prepare(*self._synced(), parsed)
-            self._count()
-        except _Refused as refused:
-            _logger.info("tool %s %s: %s", tool, on, refused.reason)
-            return _not_sent(target, refused)
-        return await self._send_once(tool, target, on, request, write)
-
-    async def _send_once(
-        self,
-        tool: str,
-        target: str,
-        on: str,
-        request: ClientRequest[Ok],
-        write: UsageWrite[UsageModel],
-    ) -> mcp_types.CallToolResult:
-        """Step 6: send the counted request once and report the outcome."""
-        body: dict[str, object] = {
-            "target": target,
-            "outcome": "acknowledged",
-            "fields": {str(item["name"]): item["value"] for item in write.body()},
-            "sent_at": utc_text(self._now()),
-            "note": _ACKNOWLEDGED_NOTE,
-        }
-        try:
-            await self._send(request)
-        except CommunicationError:
-            body |= {"outcome": "unknown", "note": _UNKNOWN_NOTE}
-        except asyncio.CancelledError:
-            # the write may be on the wire; it is never resent
-            _logger.info("tool %s: write cancelled, outcome unknown", tool)
-            raise
-        _logger.info("tool %s %s: %s", tool, on, body["outcome"])
-        return _result(body, is_error=body["outcome"] == "unknown")
+        return _reported(parsed.target, outcome, _NOT_HEATING)

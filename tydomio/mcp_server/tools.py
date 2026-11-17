@@ -11,8 +11,8 @@ from mcp.server.lowlevel import Server
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError
 
 from ..scrub import Secrets
-from .cache import Cache
-from .view import get_state
+from ..state.cache import Cache
+from ..state.view import get_state
 
 if TYPE_CHECKING:
     # writes.py imports this module for its results

@@ -4,6 +4,9 @@ import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 
+from tydomio.requests import ClientRequest
+from tydomio.response import Ok, Response
+
 AUTHORIZATION = "Digest test"
 
 # synthetic /configs/file payload, every list left empty
@@ -161,3 +164,34 @@ def answer_gets(
         )
 
     return reply
+
+
+class FakeClock:
+    """A monotonic clock the test moves."""
+
+    def __init__(self) -> None:
+        """Start at an arbitrary time."""
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        """Give the time."""
+        return self.now
+
+
+class FakeSend:
+    """Records each request; waits for `gate` when given, then acknowledges."""
+
+    def __init__(self, gate: asyncio.Event | None = None) -> None:
+        """Record from now on."""
+        self.requests: list[ClientRequest[Ok]] = []
+        self._gate = gate
+
+    async def __call__(self, request: ClientRequest[Ok]) -> Ok:
+        """Record the request, then acknowledge it."""
+        self.requests.append(request)
+        if self._gate is not None:
+            await self._gate.wait()
+        else:
+            # suspends as a real send does
+            await asyncio.sleep(0)
+        return Ok(Response(status=200, headers={}, content=None))

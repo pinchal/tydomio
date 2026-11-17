@@ -8,29 +8,25 @@ from typing import Any
 import pytest
 from mcp import types as mcp_types
 
+from tests.builders import writable_cache
 from tests.conftest import (
     FakeAuthorizationProvider,
+    FakeClock,
     FakeConnectionFactory,
+    FakeSend,
     FakeSleep,
     FakeWebsocket,
     ScriptExhaustedError,
 )
-from tests.mcp.conftest import config, data, devices
 from tydomio.client import AsyncTydomClient
 from tydomio.error import CommunicationError, InvalidResponse, InvalidWrite
-from tydomio.mcp_server.cache import Cache
-from tydomio.mcp_server.writes import (
-    HEATING_USAGES,
-    SET_HEATING,
-    SHUTTER_USAGES,
-    Writes,
-)
-from tydomio.model.usages import WRITES
+from tydomio.mcp_server.writes import SET_HEATING, Writes
 from tydomio.model.usages.area import AreaWrite
 from tydomio.model.usages.boiler import BoilerWrite
 from tydomio.model.usages.re2020_control_boiler import Re2020ControlBoilerWrite
 from tydomio.requests import ClientRequest
-from tydomio.response import Ok, Response
+from tydomio.response import Ok
+from tydomio.state.cache import Cache
 
 SHUTTER = "e:10:1"
 SENT_AT = datetime(2026, 11, 3, 8, 9, 10, tzinfo=UTC)
@@ -47,53 +43,7 @@ UNKNOWN_NOTE = (
 
 @pytest.fixture(name="cache")
 def synced_cache() -> Cache:
-    cache = Cache()
-    cache.apply_config(
-        config(
-            {
-                (10, 1): ("Shutter", "shutter"),
-                (20, 1): ("Boiler", "boiler"),
-                (30, 1): ("Thermostat", "re2020ControlBoiler"),
-            },
-            {7: ("Living", "re2020ControlBoiler"), 8: ("Hall", "hvac")},
-            {5: ("All shutters", "shutter"), 6: ("Heating", "boiler")},
-        )
-    )
-    cache.replace_devices(devices((10, 1, [data("position", 100)])), [])
-    cache.mark_connected()
-    cache.mark_synced(datetime(2026, 11, 2, 9, 14, 5, tzinfo=UTC))
-    return cache
-
-
-class FakeClock:
-    """A monotonic clock the test moves."""
-
-    def __init__(self) -> None:
-        """Start at an arbitrary time."""
-        self.now = 1000.0
-
-    def __call__(self) -> float:
-        """Give the time."""
-        return self.now
-
-
-class FakeSend:
-    """Records each request; waits for `gate` when given, then acknowledges."""
-
-    def __init__(self, gate: asyncio.Event | None = None) -> None:
-        """Record from now on."""
-        self.requests: list[ClientRequest[Ok]] = []
-        self._gate = gate
-
-    async def __call__(self, request: ClientRequest[Ok]) -> Ok:
-        """Record the request, then acknowledge it."""
-        self.requests.append(request)
-        if self._gate is not None:
-            await self._gate.wait()
-        else:
-            # suspends as a real send does
-            await asyncio.sleep(0)
-        return Ok(Response(status=200, headers={}, content=None))
+    return writable_cache()
 
 
 def body(result: mcp_types.CallToolResult) -> dict[str, Any]:
@@ -178,180 +128,6 @@ async def test_invalid_input_sends_nothing_and_echoes_nothing(
     assert send.requests == []
 
 
-async def test_a_write_while_not_synced_sends_nothing(cache: Cache) -> None:
-    cache.mark_disconnected()
-    send = FakeSend()
-
-    result = await Writes(cache, send, 1.0).set_shutter(
-        {"target": SHUTTER, "command": "UP"}
-    )
-
-    assert not_sent(result) == "not_synced"
-    assert send.requests == []
-
-
-@pytest.mark.parametrize("target", ["e:10:2", "e:99:1", "g:99"])
-async def test_an_unknown_target_sends_nothing(cache: Cache, target: str) -> None:
-    send = FakeSend()
-
-    result = await Writes(cache, send, 1.0).set_shutter(
-        {"target": target, "command": "UP"}
-    )
-
-    assert not_sent(result) == "unknown_target"
-    assert body(result)["target"] == target
-    assert send.requests == []
-
-
-async def test_a_write_after_drift_removed_the_target_sends_nothing(
-    cache: Cache,
-) -> None:
-    cache.apply_config(config({(20, 1): ("Boiler", "boiler")}))
-    send = FakeSend()
-
-    result = await Writes(cache, send, 1.0).set_shutter(
-        {"target": SHUTTER, "command": "UP"}
-    )
-
-    assert not_sent(result) == "unknown_target"
-    assert send.requests == []
-
-
-@pytest.mark.parametrize("target", ["e:20:1", "g:6"])
-async def test_a_target_that_is_not_a_shutter_sends_nothing(
-    cache: Cache, target: str
-) -> None:
-    send = FakeSend()
-
-    result = await Writes(cache, send, 1.0).set_shutter(
-        {"target": target, "command": "UP"}
-    )
-
-    assert not_sent(result) == "wrong_usage"
-    assert send.requests == []
-
-
-@pytest.mark.parametrize(
-    "arguments",
-    [
-        {"position": 101},
-        {"position": -1},
-        {"position": 50.0},
-        {"position": True},
-        {"position": None},
-        {"command": "zz-OPEN"},
-        {"command": 1},
-        {"command": "UP", "position": 50},
-        {},
-    ],
-)
-async def test_an_invalid_write_sends_nothing_and_echoes_nothing(
-    cache: Cache, arguments: dict[str, object]
-) -> None:
-    send = FakeSend()
-
-    result = await Writes(cache, send, 1.0).set_shutter({"target": SHUTTER} | arguments)
-
-    assert not_sent(result) == "invalid_write"
-    assert "zz" not in body(result)["note"]
-    assert send.requests == []
-
-
-async def test_the_write_model_names_the_invalid_field(cache: Cache) -> None:
-    result = await Writes(cache, FakeSend(), 1.0).set_shutter(
-        {"target": SHUTTER, "position": 101}
-    )
-
-    assert "position" in body(result)["note"]
-    assert "101" not in body(result)["note"]
-
-
-@pytest.mark.parametrize("rate", [0.1, 1.0, 3.0, 10.0])
-async def test_a_write_within_the_interval_is_rate_limited(
-    cache: Cache, rate: float
-) -> None:
-    send = FakeSend()
-    clock = FakeClock()
-    writes = Writes(cache, send, rate, clock)
-    await writes.set_shutter({"target": SHUTTER, "command": "DOWN"})
-    clock.now += 0.5 / rate
-
-    result = await writes.set_shutter({"target": SHUTTER, "command": "STOP"})
-
-    assert not_sent(result) == "rate_limited"
-    assert 0 < body(result)["retry_after_s"] <= 1 / rate
-    assert len(send.requests) == 1
-
-
-async def test_retry_after_s_never_exceeds_the_interval(cache: Cache) -> None:
-    clock = FakeClock()
-    # 1 / 6 s rounds up to 0.167 at the millisecond
-    writes = Writes(cache, FakeSend(), 6.0, clock)
-    await writes.set_shutter({"target": SHUTTER, "command": "DOWN"})
-
-    result = await writes.set_shutter({"target": SHUTTER, "command": "STOP"})
-
-    assert body(result)["retry_after_s"] <= 1 / 6
-
-
-async def test_a_write_after_the_interval_is_sent(cache: Cache) -> None:
-    send = FakeSend()
-    clock = FakeClock()
-    writes = Writes(cache, send, 2.0, clock)
-    await writes.set_shutter({"target": SHUTTER, "command": "DOWN"})
-    clock.now += 0.5
-
-    result = await writes.set_shutter({"target": SHUTTER, "command": "STOP"})
-
-    assert body(result)["outcome"] == "acknowledged"
-    assert len(send.requests) == 2
-
-
-async def test_a_refused_write_is_not_counted(cache: Cache) -> None:
-    send = FakeSend()
-    writes = Writes(cache, send, 1.0, FakeClock())
-    await writes.set_shutter({"target": SHUTTER, "position": 101})
-
-    result = await writes.set_shutter({"target": SHUTTER, "position": 0})
-
-    assert body(result)["outcome"] == "acknowledged"
-
-
-async def test_two_parallel_calls_send_one_write(cache: Cache) -> None:
-    send = FakeSend()
-    writes = Writes(cache, send, 1.0, FakeClock())
-
-    results = await asyncio.gather(
-        writes.set_shutter({"target": SHUTTER, "command": "UP"}),
-        writes.set_shutter({"target": SHUTTER_GROUP, "command": "DOWN"}),
-    )
-
-    assert sorted(body(r)["outcome"] for r in results) == ["acknowledged", "not_sent"]
-    assert len(send.requests) == 1
-
-
-async def test_cancelled_during_the_send_is_sent_once_counted_and_logged(
-    cache: Cache, caplog: pytest.LogCaptureFixture
-) -> None:
-    send = FakeSend(gate=asyncio.Event())
-    writes = Writes(cache, send, 1.0, FakeClock())
-    call = asyncio.create_task(writes.set_shutter({"target": SHUTTER, "command": "UP"}))
-    while not send.requests:
-        await asyncio.sleep(0)
-
-    with caplog.at_level("INFO", logger="tydomio.mcp_server.writes"):
-        call.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await call
-
-    assert [r.getMessage() for r in caplog.records] == [
-        "tool set_shutter: write cancelled, outcome unknown"
-    ]
-    later = await writes.set_shutter({"target": SHUTTER, "command": "UP"})
-    assert not_sent(later) == "rate_limited"
-    assert len(send.requests) == 1
-
-
 @pytest.mark.parametrize(
     ("target", "url"),
     [(SHUTTER, b"/devices/10/endpoints/1/data"), (SHUTTER_GROUP, b"/groups/5/data")],
@@ -386,6 +162,119 @@ async def test_a_position_is_sent_as_the_position_field(cache: Cache) -> None:
 
     assert body(result)["fields"] == {"position": 40}
     assert send.requests[0].content == b'[{"name": "position", "value": 40}]'
+
+
+@pytest.mark.parametrize("arguments", [{"command": "UP", "position": 50}, {}])
+async def test_set_shutter_takes_exactly_one_of_command_or_position(
+    cache: Cache, arguments: dict[str, object]
+) -> None:
+    send = FakeSend()
+
+    result = await Writes(cache, send, 1.0).set_shutter({"target": SHUTTER} | arguments)
+
+    assert not_sent(result) == "invalid_write"
+    assert body(result)["note"] == (
+        "Nothing was sent: give exactly one of command or position."
+    )
+    assert send.requests == []
+
+
+async def test_set_shutter_checks_the_target_before_command_or_position(
+    cache: Cache,
+) -> None:
+    result = await Writes(cache, FakeSend(), 1.0).set_shutter({"target": "e:20:1"})
+
+    assert not_sent(result) == "wrong_usage"
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments", "expected"),
+    [
+        (
+            "set_shutter",
+            {"target": "e:99:1", "command": "UP"},
+            {
+                "reason": "unknown_target",
+                "note": "Nothing was sent: the target does not exist. "
+                "Take its id from get_state.",
+            },
+        ),
+        (
+            "set_shutter",
+            {"target": "e:20:1", "command": "UP"},
+            {
+                "reason": "wrong_usage",
+                "note": "Nothing was sent: the target is not a shutter or a "
+                "shutter group.",
+            },
+        ),
+        (
+            "set_heating",
+            {"target": "g:6", "fields": {"setpoint": 19.5}},
+            {
+                "reason": "wrong_usage",
+                "note": "Nothing was sent: the target is not a boiler or "
+                "re2020ControlBoiler endpoint, nor a heating area.",
+            },
+        ),
+        (
+            "set_shutter",
+            {"target": SHUTTER, "position": 101},
+            {
+                "reason": "invalid_write",
+                "note": "Nothing was sent: ShutterWrite: invalid fields position.",
+            },
+        ),
+    ],
+)
+async def test_a_refusal_is_reported_with_its_note(
+    cache: Cache, tool: str, arguments: dict[str, object], expected: dict[str, str]
+) -> None:
+    writes = Writes(cache, FakeSend(), 1.0, heating=True)
+
+    result = await writes.call(tool, arguments)
+
+    assert result.is_error
+    assert (
+        body(result)
+        == {
+            "target": arguments["target"],
+            "outcome": "not_sent",
+            "fields": {},
+        }
+        | expected
+    )
+
+
+async def test_a_write_while_not_synced_is_reported_with_its_note(
+    cache: Cache,
+) -> None:
+    cache.mark_disconnected()
+
+    result = await Writes(cache, FakeSend(), 1.0).set_shutter(
+        {"target": SHUTTER, "command": "UP"}
+    )
+
+    assert body(result)["note"] == (
+        "Nothing was sent: the cache is not synced with the Tydom. "
+        "See the cache block of get_state."
+    )
+
+
+async def test_a_rate_limited_write_is_reported_with_its_retry(cache: Cache) -> None:
+    writes = Writes(cache, FakeSend(), 2.0, FakeClock())
+    await writes.set_shutter({"target": SHUTTER, "command": "UP"})
+
+    result = await writes.set_shutter({"target": SHUTTER, "command": "UP"})
+
+    assert body(result) == {
+        "target": SHUTTER,
+        "outcome": "not_sent",
+        "reason": "rate_limited",
+        "retry_after_s": 0.5,
+        "fields": {},
+        "note": "Nothing was sent: too many writes. Retry after retry_after_s.",
+    }
 
 
 @pytest.mark.parametrize(
@@ -453,23 +342,11 @@ async def test_a_write_lost_with_the_connection_is_unknown_after_one_put(
     assert len(puts(websocket)) == 1
 
 
-async def test_a_communication_error_is_counted(cache: Cache) -> None:
-    async def fail(_request: ClientRequest[Ok]) -> Ok:
-        raise CommunicationError("Request timeout")
-
-    writes = Writes(cache, fail, 1.0, FakeClock())
-    await writes.set_shutter({"target": SHUTTER, "command": "UP"})
-
-    result = await writes.set_shutter({"target": SHUTTER, "command": "UP"})
-
-    assert not_sent(result) == "rate_limited"
-
-
 async def test_logs_at_info_hold_no_id_nor_value(
     cache: Cache, caplog: pytest.LogCaptureFixture
 ) -> None:
     writes = Writes(cache, FakeSend(), 1.0, FakeClock())
-    with caplog.at_level("INFO", logger="tydomio.mcp_server.writes"):
+    with caplog.at_level("INFO", logger="tydomio.state.writer"):
         await writes.set_shutter({"target": "e:99:1", "command": "UP"})
         await writes.set_shutter({"target": SHUTTER_GROUP, "position": 37})
         await writes.set_shutter({"target": SHUTTER, "position": 37})
@@ -479,37 +356,6 @@ async def test_logs_at_info_hold_no_id_nor_value(
         "tool set_shutter on a group: acknowledged",
         "tool set_shutter on an endpoint: rate_limited",
     ]
-
-
-def test_every_write_model_is_classified_once() -> None:
-    assert SHUTTER_USAGES | HEATING_USAGES == set(WRITES)
-    assert not SHUTTER_USAGES & HEATING_USAGES
-
-
-@pytest.mark.parametrize("target", ["e:10:1", "g:6", "a:8"])
-async def test_set_heating_refuses_a_target_that_is_not_heating(
-    cache: Cache, target: str
-) -> None:
-    send = FakeSend()
-
-    result = await Writes(cache, send, 1.0, heating=True).set_heating(
-        {"target": target, "fields": {"setpoint": 19.5}}
-    )
-
-    assert not_sent(result) == "wrong_usage"
-    assert send.requests == []
-
-
-@pytest.mark.parametrize("target", ["e:99:1", "a:99"])
-async def test_set_heating_refuses_an_unknown_target(cache: Cache, target: str) -> None:
-    send = FakeSend()
-
-    result = await Writes(cache, send, 1.0, heating=True).set_heating(
-        {"target": target, "fields": {"setpoint": 19.5}}
-    )
-
-    assert not_sent(result) == "unknown_target"
-    assert send.requests == []
 
 
 @pytest.mark.parametrize(
@@ -529,34 +375,6 @@ async def test_set_heating_invalid_input_sends_nothing_and_echoes_nothing(
     result = await Writes(cache, send, 1.0, heating=True).set_heating(arguments)
 
     assert body(result) == {"code": "invalid_input", "message": "Invalid arguments"}
-    assert send.requests == []
-
-
-@pytest.mark.parametrize(
-    ("target", "fields"),
-    [
-        ("e:20:1", {"setpoint": 19.3}),
-        ("e:20:1", {"zz-field": 1}),
-        ("e:20:1", {}),
-        ("e:20:1", {"localMode": "zz-WARM"}),
-        # the Python name is not the Tydom name: only aliases are taken
-        ("e:20:1", {"heat_setpoint": 19.5}),
-        ("e:20:1", {"selectedProg": 1}),
-        ("e:30:1", {"setpoint": 19.5}),
-        ("a:7", {"selectedProg": 1}),
-    ],
-)
-async def test_set_heating_refuses_an_invalid_write(
-    cache: Cache, target: str, fields: dict[str, object]
-) -> None:
-    send = FakeSend()
-
-    result = await Writes(cache, send, 1.0, heating=True).set_heating(
-        {"target": target, "fields": fields}
-    )
-
-    assert not_sent(result) == "invalid_write"
-    assert "zz" not in body(result)["note"]
     assert send.requests == []
 
 
@@ -602,7 +420,7 @@ async def test_set_heating_logs_at_info_hold_no_id_nor_value(
     cache: Cache, caplog: pytest.LogCaptureFixture
 ) -> None:
     writes = Writes(cache, FakeSend(), 1.0, FakeClock(), heating=True)
-    with caplog.at_level("INFO", logger="tydomio.mcp_server.writes"):
+    with caplog.at_level("INFO", logger="tydomio.state.writer"):
         await writes.set_heating({"target": "g:6", "fields": {"setpoint": 19.5}})
         await writes.set_heating({"target": "a:7", "fields": {"setpoint": 19.5}})
 

@@ -2,8 +2,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from tests.mcp.conftest import areas, config, data, devices
-from tydomio.mcp_server.cache import Cache, Connection, Entity
+from tests.builders import areas, config, data, devices
+from tydomio.state.cache import Cache, Connection, Entity
 
 CONFIG = config(
     {(10, 1): ("Shutter", "shutter"), (20, 1): ("Boiler", "boiler")},

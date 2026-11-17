@@ -2,8 +2,11 @@
 
 import logging
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Final, override
+
+_logger = logging.getLogger(__name__)
 
 REDACTED: Final = "<redacted>"
 
@@ -58,3 +61,17 @@ class SecretFilter(logging.Filter):
         record.exc_info = None
         record.exc_text = None
         return True
+
+
+def read_secrets(env: Mapping[str, str]) -> Secrets | None:
+    """Return the secrets from the environment; None, logged, if one is missing."""
+    values: dict[str, str] = {}
+    for name in ("TYDOM_IP", "TYDOM_MAC_ADDRESS", "TYDOM_PASSWORD"):
+        if not (value := env.get(name, "")):
+            _logger.error("%s is not set", name)
+            return None
+        values[name] = value
+    if (mac := bare_mac(values["TYDOM_MAC_ADDRESS"])) is None:
+        _logger.error("TYDOM_MAC_ADDRESS is not 12 hexadecimal digits")
+        return None
+    return Secrets(password=values["TYDOM_PASSWORD"], ip=values["TYDOM_IP"], mac=mac)

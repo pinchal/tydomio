@@ -16,10 +16,10 @@ from mcp.server.stdio import stdio_server
 
 from ..client import AsyncTydomClient, AuthorizationProvider, ConnectionFactory
 from ..requests import TydomPutAreasDataRequest, TydomPutDevicesDataRequest
-from ..scrub import SecretFilter, Secrets, bare_mac
+from ..scrub import SecretFilter, read_secrets
+from ..state.cache import Cache
+from ..state.sync import Sync
 from ..stderr_logging import log_to_stderr
-from .cache import Cache
-from .sync import Sync
 from .tools import build_server
 from .writes import Writes
 
@@ -62,20 +62,6 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help=f"writes per second, in (0, {MAX_WRITE_RATE:g}]",
     )
     return parser.parse_args(argv)
-
-
-def _read_secrets(env: Mapping[str, str]) -> Secrets | None:
-    """Return the secrets from the environment; None, logged, if one is missing."""
-    values: dict[str, str] = {}
-    for name in ("TYDOM_IP", "TYDOM_MAC_ADDRESS", "TYDOM_PASSWORD"):
-        if not (value := env.get(name, "")):
-            _logger.error("%s is not set", name)
-            return None
-        values[name] = value
-    if (mac := bare_mac(values["TYDOM_MAC_ADDRESS"])) is None:
-        _logger.error("TYDOM_MAC_ADDRESS is not 12 hexadecimal digits")
-        return None
-    return Secrets(password=values["TYDOM_PASSWORD"], ip=values["TYDOM_IP"], mac=mac)
 
 
 def _leaf_types(group: BaseExceptionGroup) -> Iterator[str]:
@@ -129,7 +115,7 @@ async def run(
     # stderr only: stdout carries the MCP protocol
     handler = log_to_stderr()
     try:
-        if (secrets := _read_secrets(env)) is None:
+        if (secrets := read_secrets(env)) is None:
             return EXIT_CONFIGURATION
         handler.addFilter(SecretFilter(secrets))
         _logger.info("tool results send equipment names and states to the MCP client")

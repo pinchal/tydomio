@@ -4,11 +4,11 @@ from typing import Any
 
 import pytest
 
-from tests.mcp.conftest import areas, config, data, devices
-from tydomio.mcp_server.cache import Cache
-from tydomio.mcp_server.view import MAX_STRING, get_state, sanitize
+from tests.builders import areas, config, data, devices
 from tydomio.model.config import Group
 from tydomio.scrub import REDACTED, Secrets
+from tydomio.state.cache import Cache
+from tydomio.state.view import MAX_STRING, get_state, sanitize
 
 # invented secrets; the password built from parts: a literal reads as hardcoded
 PASSWORD = "".join(("hunter", "2"))

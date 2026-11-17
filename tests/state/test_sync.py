@@ -7,6 +7,8 @@ from typing import override
 
 import pytest
 
+from tests.builders import areas, config, devices
+from tests.builders import data as field
 from tests.conftest import (
     FakeAuthorizationProvider,
     FakeConnectionFactory,
@@ -16,13 +18,11 @@ from tests.conftest import (
     answer_gets,
     put,
 )
-from tests.mcp.conftest import areas, config, devices
-from tests.mcp.conftest import data as field
 from tydomio.client import AsyncTydomClient
-from tydomio.mcp_server import sync
-from tydomio.mcp_server.cache import Cache, CacheError
 from tydomio.model.data import AreasData, DevicesData
 from tydomio.requests import TydomPutAreasDataRequest, TydomPutDevicesDataRequest
+from tydomio.state import sync
+from tydomio.state.cache import Cache, CacheError
 
 NOW = datetime(2026, 11, 3, 12, tzinfo=UTC)
 SHUTTER = (10, 1)
