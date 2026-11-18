@@ -8,7 +8,9 @@ mistake or a malicious caller could do through them, and the check and the test 
 stop each case. The threats of the writes themselves, in the library, are in
 [writes.md](writes.md).
 
-Tests are in `tests/mcp/` unless named otherwise.
+Tests are in `tests/mcp/` (`test_server.py`, `test_tools.py`, `test_writes.py`), in
+`tests/state/` (`test_cache.py`, `test_sync.py`, `test_view.py`, `test_writer.py`) and
+in `tests/` (`test_scrub.py`).
 
 ## Trust boundaries
 

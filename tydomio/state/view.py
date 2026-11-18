@@ -22,6 +22,13 @@ def utc_text(moment: datetime) -> str:
     return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def strip_controls(text: str) -> str:
+    """Remove the control and format characters, keeping the whitespace."""
+    return "".join(
+        c for c in text if c.isspace() or unicodedata.category(c) not in {"Cc", "Cf"}
+    )
+
+
 def sanitize(text: str, secrets: Secrets) -> str:
     """Make a Tydom string safe to output: no control or format characters, no secret.
 
@@ -29,10 +36,7 @@ def sanitize(text: str, secrets: Secrets) -> str:
     them, and the cut comes after it, so that it cannot leave part of a secret
     unscrubbed.
     """
-    text = "".join(
-        c for c in text if c.isspace() or unicodedata.category(c) not in {"Cc", "Cf"}
-    )
-    text = secrets.scrub(_WHITESPACE.sub(" ", text).strip())
+    text = secrets.scrub(_WHITESPACE.sub(" ", strip_controls(text)).strip())
     if len(text) > MAX_STRING:
         text = text[: MAX_STRING - 1] + "…"
     return text

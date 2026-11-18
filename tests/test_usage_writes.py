@@ -81,6 +81,26 @@ def test_error_does_not_echo_an_unknown_field_name() -> None:
     assert "injected_name" not in str(raised.value)
 
 
+def test_shutter_position_and_command_together_are_refused() -> None:
+    with pytest.raises(InvalidWrite) as raised:
+        ShutterWrite(position=37, position_cmd=PositionCmd.FAVORIT2)
+
+    assert str(raised.value) == (
+        "ShutterWrite: set exactly one of position or positionCmd"
+    )
+
+
+@pytest.mark.parametrize(
+    "fields", [{"position": 37}, {"positionCmd": "FAVORIT2"}], ids=str
+)
+def test_shutter_position_or_command_alone_is_accepted(
+    fields: dict[str, object],
+) -> None:
+    assert ShutterWrite.model_validate(fields).body() == [
+        {"name": name, "value": value} for name, value in fields.items()
+    ]
+
+
 def test_body_holds_the_fields_set_by_their_tydom_name() -> None:
     write = ShutterWrite(position_cmd=PositionCmd.UP)
 

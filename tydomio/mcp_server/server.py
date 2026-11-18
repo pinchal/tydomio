@@ -2,12 +2,10 @@
 
 import argparse
 import asyncio
-import functools
 import logging
 import os
 import sys
-from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
-from datetime import UTC, datetime
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Final
 
 import anyio
@@ -15,10 +13,10 @@ from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
 from ..client import AsyncTydomClient, AuthorizationProvider, ConnectionFactory
-from ..requests import TydomPutAreasDataRequest, TydomPutDevicesDataRequest
+from ..error import leaf_type_names
 from ..scrub import SecretFilter, read_secrets
 from ..state.cache import Cache
-from ..state.sync import Sync
+from ..state.sync import synced_client
 from ..stderr_logging import log_to_stderr
 from .tools import build_server
 from .writes import Writes
@@ -62,14 +60,6 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help=f"writes per second, in (0, {MAX_WRITE_RATE:g}]",
     )
     return parser.parse_args(argv)
-
-
-def _leaf_types(group: BaseExceptionGroup) -> Iterator[str]:
-    for error in group.exceptions:
-        if isinstance(error, BaseExceptionGroup):
-            yield from _leaf_types(error)
-        else:
-            yield type(error).__name__
 
 
 async def _run_stdio(
@@ -120,18 +110,13 @@ async def run(
         handler.addFilter(SecretFilter(secrets))
         _logger.info("tool results send equipment names and states to the MCP client")
         cache = Cache()
-        sync = Sync(cache, sleep, functools.partial(datetime.now, UTC))
-        client = AsyncTydomClient(
-            tydom_password=secrets.password,
-            tydom_ip=secrets.ip,
-            tydom_mac=secrets.mac,
-            on_connection_routines=(sync.routine,),
-            authorization_provider=authorization_provider,
-            connection_factory=connection_factory,
+        client = synced_client(
+            cache,
+            secrets,
             sleep=sleep,
+            connection_factory=connection_factory,
+            authorization_provider=authorization_provider,
         )
-        client.subscribe(TydomPutDevicesDataRequest, sync.on_devices_push)
-        client.subscribe(TydomPutAreasDataRequest, sync.on_areas_push)
         writes = (
             None
             if args.writes == "none"
@@ -143,7 +128,7 @@ async def run(
             await _serve(client, build_server(cache, secrets, writes), stdin, stdout)
         except BaseExceptionGroup as group:
             # the type names only: a message or a traceback may hold a value
-            _logger.error("Stopped on %s", ", ".join(_leaf_types(group)))
+            _logger.error("Stopped on %s", ", ".join(leaf_type_names(group)))
             return EXIT_FATAL
         return EXIT_STOPPED
     finally:

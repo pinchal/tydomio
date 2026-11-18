@@ -55,3 +55,20 @@ change and back, has been run against a real Tydom.
 to the provider of the model it uses. Nothing leaves unless the client calls a tool.
 Devices whose usage tydomio does not type, which may include an alarm, are listed by
 id, name and kind only, without their state.
+
+## Terminal UI
+
+`tydomio-tui` shows the state of the home's devices and heating areas in a terminal,
+kept up to date by the Tydom's pushes, with a log pane. It reads `TYDOM_IP`,
+`TYDOM_MAC_ADDRESS` and `TYDOM_PASSWORD` from the environment and refuses to start
+without them.
+
+```
+uv run --env-file <path to your env file> tydomio-tui
+```
+
+It connects to the real Tydom and can send commands to your equipment, heating
+included: Enter on a writable item opens a form, then a confirmation screen; `y` sends,
+and a heating command needs the typed word `yes` after a warning that it can leave the
+home unheated. Each command is sent once, never resent, and at most one per second.
+Threats and checks: [docs/threats/tui.md](docs/threats/tui.md).

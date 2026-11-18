@@ -1,12 +1,13 @@
 """Keeps the cache in sync: snapshot and refresh on each connection, then pushes."""
 
 import asyncio
+import functools
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Final
 
-from ..client import AsyncTydomClient
+from ..client import AsyncTydomClient, AuthorizationProvider, ConnectionFactory
 from ..error import CommunicationError
 from ..model.config import Config
 from ..requests import (
@@ -17,6 +18,7 @@ from ..requests import (
     TydomPutAreasDataRequest,
     TydomPutDevicesDataRequest,
 )
+from ..scrub import Secrets
 from .cache import Cache, CacheError
 
 _logger = logging.getLogger(__name__)
@@ -108,3 +110,30 @@ class Sync:
         except Exception:
             # not a RuntimeError, so the client stops rather than go on half-merged
             raise CacheError("Merging an areas push failed") from None
+
+
+def synced_client(
+    cache: Cache,
+    secrets: Secrets,
+    *,
+    sleep: Callable[[float], Awaitable[None]],
+    connection_factory: ConnectionFactory | None = None,
+    authorization_provider: AuthorizationProvider | None = None,
+) -> AsyncTydomClient:
+    """Build a client wired to `cache`: the `Sync` routine runs on each connection.
+
+    The devices and areas push handlers merge into the cache.
+    """
+    sync = Sync(cache, sleep, functools.partial(datetime.now, UTC))
+    client = AsyncTydomClient(
+        tydom_password=secrets.password,
+        tydom_ip=secrets.ip,
+        tydom_mac=secrets.mac,
+        on_connection_routines=(sync.routine,),
+        authorization_provider=authorization_provider,
+        connection_factory=connection_factory,
+        sleep=sleep,
+    )
+    client.subscribe(TydomPutDevicesDataRequest, sync.on_devices_push)
+    client.subscribe(TydomPutAreasDataRequest, sync.on_areas_push)
+    return client

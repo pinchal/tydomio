@@ -39,7 +39,7 @@ dev = [
 package = true
 
 [project.scripts]
-tydomio-cli = "tydomio.cli:main"
+tydomio-tui = "tydomio.tui.main:main"
 tydomio-capture = "tydomio.capture.cli:main"
 tydomio-mcp = "tydomio.mcp_server.server:main"
 

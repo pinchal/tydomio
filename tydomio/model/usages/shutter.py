@@ -1,8 +1,10 @@
 """Roller shutter: fields of the `shutter` usage."""
 
-from typing import Annotated
+from typing import Annotated, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
+
+from tydomio.error import InvalidWrite
 
 from .base import Reading, TydomEnum, UsageModel, UsageWrite, member_of
 
@@ -44,3 +46,12 @@ class ShutterWrite(UsageWrite[Shutter]):
     position_cmd: Annotated[PositionCmd, member_of(PositionCmd)] | None = Field(
         default=None, alias="positionCmd"
     )
+
+    @model_validator(mode="after")
+    def _one_of_position_or_command(self) -> Self:
+        """Refuse a position and a command together: the shutter cannot do both."""
+        if self.position is not None and self.position_cmd is not None:
+            raise InvalidWrite(
+                "ShutterWrite: set exactly one of position or positionCmd"
+            )
+        return self

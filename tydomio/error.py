@@ -1,5 +1,7 @@
 """Exceptions for the TydomIo library."""
 
+from collections.abc import Iterator
+
 
 class TydomIoError(RuntimeError):
     """Base class for all TydomIo exceptions."""
@@ -27,3 +29,12 @@ class InvalidTarget(TydomIoError):
 
 class InvalidWrite(TydomIoError):
     """Exception raised for a write refused before it is sent."""
+
+
+def leaf_type_names(group: BaseExceptionGroup) -> Iterator[str]:
+    """Give the type name of each exception of a group, nested groups flattened."""
+    for error in group.exceptions:
+        if isinstance(error, BaseExceptionGroup):
+            yield from leaf_type_names(error)
+        else:
+            yield type(error).__name__

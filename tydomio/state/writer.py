@@ -36,13 +36,13 @@ from .cache import Cache
 _logger = logging.getLogger(__name__)
 
 SHUTTER_USAGES: Final[frozenset[type[UsageModel]]] = frozenset({Shutter})
-"""The usages `set_shutter` writes, to endpoints and groups."""
+"""The usages written as shutters: endpoints and groups."""
 HEATING_USAGES: Final[frozenset[type[UsageModel]]] = frozenset(
     {Boiler, Re2020ControlBoiler, Area}
 )
-"""The usages `set_heating` writes: endpoints of these usages, and areas."""
+"""The usages written as heating: endpoints of these usages, and areas."""
 HEATING_AREA_USAGES: Final = frozenset({"re2020ControlBoiler"})
-"""The `last_usage` of the config areas `set_heating` writes (E16)."""
+"""The `last_usage` of the config areas written as heating (E16)."""
 
 
 @dataclass(frozen=True)
@@ -55,10 +55,13 @@ class Policy:
 
 
 SHUTTER: Final = Policy(SHUTTER_USAGES, SHUTTER_USAGES, frozenset())
+"""Shutter endpoints and groups only."""
 HEATING: Final = Policy(HEATING_USAGES - {Area}, frozenset(), HEATING_AREA_USAGES)
+"""Heating endpoints and areas; no group."""
 EVERYTHING: Final = Policy(
     frozenset(WRITES) - {Area}, SHUTTER_USAGES, HEATING_AREA_USAGES
 )
+"""Every writable endpoint usage, shutter groups, and the heating areas."""
 
 
 @dataclass(frozen=True)

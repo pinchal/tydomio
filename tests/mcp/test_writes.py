@@ -218,6 +218,15 @@ async def test_set_shutter_checks_the_target_before_command_or_position(
             },
         ),
         (
+            "set_heating",
+            {"target": SHUTTER, "fields": {"setpoint": 19.5}},
+            {
+                "reason": "wrong_usage",
+                "note": "Nothing was sent: the target is not a boiler or "
+                "re2020ControlBoiler endpoint, nor a heating area.",
+            },
+        ),
+        (
             "set_shutter",
             {"target": SHUTTER, "position": 101},
             {
